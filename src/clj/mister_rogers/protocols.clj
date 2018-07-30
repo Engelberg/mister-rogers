@@ -1,16 +1,22 @@
 (ns mister-rogers.protocols)
 
 (defprotocol Objective
-  (evaluate [this solution data] [this move cur-solution cur-evaluation data]
-    "Return number or Evaluation, move arity is optional")
+  (evaluate [this solution data] "Return number or Evaluation")
   (minimizing? [this]))
+
+(defprotocol ObjectiveDelta
+  "Optionally implement this protocol if there is a more efficient way to evaluate one solution in terms of another"
+  (evaluate-delta [this move cur-solution cur-evaluation data]))
 
 (defprotocol Evaluation
   (value [this] "Return number"))
 
 (defprotocol Constraint
-  (validate [this solution data] [this move cur-solution cur-validation data]
-    "Return Validation, move arity is optional"))
+  (validate [this solution data] "Return Validation, move arity is optional"))
+
+(defprotocol ConstraintDelta
+  "Optionally implement this protocol if there is a more efficient way to evaluate one constraint in terms of another"
+  (validate-delta [this move cur-solution cur-validation data]))
 
 (defprotocol Validation
   (passed? [this]))
@@ -24,11 +30,11 @@
 ;; Default implementations
 
 (extend-type Object
-  Objective
-  (evaluate [this move cur-solution cur-evaluation data]
+  ObjectiveDelta
+  (evaluate-delta [this move cur-solution cur-evaluation data]
     (evaluate this (apply-move move cur-solution) data))
-  Constraint
-  (validate [this move cur-solution cur-validation data]
+  ConstraintDelta
+  (validate-delta [this move cur-solution cur-validation data]
     (validate this (apply-move move cur-solution) data)))
 
 (extend-protocol Evaluation
@@ -48,10 +54,6 @@
 
 ;; Simple Implementations
 
-(defrecord UnanimousValidation [validations]
-  Validation
-  (passed? [this] (every? passed? validations)))
-
 (defrecord PenalizedEvaluation [evaluation penalizing-validations minimizing?]
   Evaluation
   (value [this]
@@ -60,6 +62,3 @@
         (+ (value evaluation) p)
         (- (value evaluation) p)))))
 
-;; Problem class
-
-(defrecord Problem [data objective solution-generator mandatory-constraints penalizing-constraints])
