@@ -17,8 +17,8 @@
   (mrp/minimizing? objective))
 
 (defrecord UnanimousValidation [validations]
-  Validation
-  (passed? [this] (every? passed? validations)))
+  mrp/Validation
+  (passed? [this] (every? mrp/passed? validations)))
 
 (defn- unchunk "Unchunk a chunked lazy sequence" [s]
   (lazy-seq
@@ -46,7 +46,7 @@
   
 
 (defn create-random-solution [{:keys [solution-generator data]}]
-  (binding [*rnd* (ThreadLocalRandom/current)]
+  (binding [gen/*rnd* (ThreadLocalRandom/current)]
     (solution-generator data)))
 
 
