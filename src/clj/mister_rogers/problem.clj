@@ -2,7 +2,8 @@
   (:refer-clojure :exclude [cond])
   (:require [mister-rogers.protocols :as mrp]
             [clojure.data.generators :as gen]
-            [better-cond.core :refer [cond defnc]])
+            [better-cond.core :refer [cond defnc]]
+            [medley.core :refer [map-entry map-kv]])
   (:import java.util.concurrent.ThreadLocalRandom))
 
 (defrecord Problem [data objective solution-generator mandatory-constraints penalizing-constraints])
@@ -21,9 +22,9 @@
   (empty? penalizing-constraints) evaluation
   :else (->PenalizedEvaluation
          evaluation
-         (into {}
-               (for [constraint penalizing-constraints]
-                 [constraint (mrp/validate constraint solution data)]))
+         (into {} (map (fn [constraint]
+                         (map-entry constraint (mrp/validate constraint solution data))))
+               penalizing-constraints)
          (mrp/minimizing? objective)))
 
 (defnc evaluate-delta [{:keys [objective data penalizing-constraints]}
@@ -35,10 +36,10 @@
         new-evaluation (mrp/evaluate-delta objective move cur-solution evaluation data)]
   (->PenalizedEvaluation
    new-evaluation
-   (into {}
-         (for [constraint penalizing-constraints
-               :let [validation (get penalizing-validations constraint)]]
-           [constraint (mrp/validate-delta constraint move cur-solution validation data)]))
+   (map-kv (fn [constraint validation]
+             (map-entry constraint
+                        (mrp/validate-delta constraint move cur-solution validation data)))
+           penalizing-validations)
    minimizing?))
 
 (defn minimizing? [{:keys [objective]}]
