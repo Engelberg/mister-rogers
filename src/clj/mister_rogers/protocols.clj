@@ -52,13 +52,3 @@
   Double (penalty [this] this)
   Long (penalty [this] this))
 
-;; Simple Implementations
-
-(defrecord PenalizedEvaluation [evaluation penalizing-validations minimizing?]
-  Evaluation
-  (value [this]
-    (let [p (transduce (map penalty) + penalizing-validations)]
-      (if minimizing?
-        (+ (value evaluation) p)
-        (- (value evaluation) p)))))
-
