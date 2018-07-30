@@ -27,6 +27,10 @@
 (defprotocol Move
   (apply-move [this solution] "Return Solution"))
 
+(defprotocol Neighborhood
+  (random-move [this solution])
+  (all-moves [this solution]))
+
 ;; Default implementations
 
 (extend-type Object
