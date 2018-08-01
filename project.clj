@@ -21,7 +21,7 @@
                  [clojure-csv/clojure-csv "2.0.1"]]
   :source-paths ["src/clj"]
   :java-source-paths ["src/java"]
-  :plugins [[lein-virgil "0.1.8"]])
-  
-                 
+  :plugins [])
+
+
 
