@@ -6,12 +6,15 @@
             [clojure.core.matrix :as m]            
             [better-cond.core :refer [cond defnc]]
             [primitive-math :as pm]
-            [clojure.data.generators :as gen]
+            [clojure.data.generators :as gen :refer [*rnd*]]
             [clojure.tools.reader.edn :as edn]
             [net.cgrand.xforms :as x])
   (:import org.jamesframework.core.search.algo.RandomDescent
            org.jamesframework.core.search.Search
            org.jamesframework.core.problems.Problem
+           org.jamesframework.core.problems.GenericProblem
+           org.jamesframework.core.search.neigh.Neighbourhood           
+           org.jamesframework.core.problems.sol.RandomSolutionGenerator
            org.jamesframework.core.search.stopcriteria.MaxRuntime
            org.jamesframework.core.search.stopcriteria.MaxTimeWithoutImprovement
            org.jamesframework.core.search.listeners.SearchListener
@@ -20,7 +23,9 @@
            org.jamesframework.core.problems.objectives.evaluations.SimpleEvaluation
            org.jamesframework.core.problems.objectives.evaluations.Evaluation
            org.jamesframework.core.search.algo.ParallelTempering
-           org.jamesframework.core.search.neigh.Move))
+           org.jamesframework.core.search.neigh.Move
+           io.github.engelberg.mister_rogers.Solution
+           ))
 
 ;; traveling salesman data is given as triangular half of a matrix
 (defn triangle-indices [n]
@@ -51,7 +56,7 @@
 ;; We need to define an Objective, with a way to evaluate a given solution
 
 (defnc evaluate ^double [solution {:keys [distances] n :num-cities :as data}]
-  :let [decn (dec n)]
+  :let [decn (dec n), solution (w/unwrap-solution solution)]
   (+ (get-distance distances (nth solution 0) (nth solution decn))
      (loop [i 0 total 0.0]
        (cond
@@ -62,23 +67,29 @@
 (declare evaluate-delta)
 (def TSPObjective
   (reify
-    mrp/Objective
-    (evaluate [this solution data] (evaluate solution data))
-    (minimizing? [this] true)
+    Objective
+    (evaluate [this solution data] (SimpleEvaluation/WITH_VALUE
+                                    (evaluate solution data)))
+    (isMinimizing [this] true)
     mrp/ObjectiveDelta
     (evaluate-delta [this move cur-solution cur-evaluation data]
-                    (evaluate-delta move cur-solution cur-evaluation data))))
+      (SimpleEvaluation/WITH_VALUE
+       (evaluate-delta move cur-solution cur-evaluation data)))))
 
 ;; Random solution generator to kick things off
 ;; It is crucial to use the random functions in clojure.data.generators ns
 
 (defn generate-solution [data]
-  (vec (gen/shuffle (range (:num-cities data)))))
+  (w/wrap-solution (vec (gen/shuffle (range (:num-cities data))))))
+
+(def random-solution-generator
+  (reify RandomSolutionGenerator
+    (create [this r d] (binding [*rnd* r] (generate-solution d)))))
 
 ;; Now we can create a problem that puts these elements together
 
 (defn tsp-problem [filename]
-  (prob/->Problem (read-file filename) TSPObjective generate-solution))
+  (GenericProblem. (read-file filename) TSPObjective random-solution-generator))
 
 (def tsp1 (tsp-problem "examples/data/tsp1.txt"))
 
@@ -89,8 +100,16 @@
 
 (declare apply-move)
 (defrecord TSP-2-Opt-Move [i j]
-  mrp/Move
-  (apply-move [move solution] (apply-move move solution)))
+  Move
+  (apply [this solution]
+    (let [^Solution solution solution
+          o (.o solution)]
+      (set! (.undo solution) o)
+      (set! (.o solution) (apply-move this o))))
+  (undo [this solution]
+    (let [^Solution solution solution]
+      (set! (.o solution) (.undo solution))
+      (set! (.undo solution) nil))))
 
 (defnc apply-move [{:keys [i j] :as move} solution]
   :let [n (count solution)]
@@ -106,22 +125,25 @@
 ;; Now we create a neighborhood of these possible moves
 
 (defnc random-move [solution]
-  :let [n (count solution),
+  :let [solution (w/unwrap-solution solution)
+        n (count solution),
         i (gen/uniform 0 n)
         j (gen/uniform 0 (dec n))
         j (if (>= j i) (inc j) j)]
   (->TSP-2-Opt-Move i j))
 
 (defnc all-moves [solution]
-  :let [n (count solution)]
+  :let [solution (w/unwrap-solution solution)
+        n (count solution)]
   (for [i (range n), j (range n)
         :when (not= i j)]
     (->TSP-2-Opt-Move i j)))
 
 (def TSP-2-Opt-Neighborhood
-  (reify mrp/Neighborhood
-    (random-move [this solution] (random-move solution))
-    (all-moves [this solution] (all-moves solution))))
+  (reify Neighbourhood
+    (getRandomMove [this solution r]
+      (binding [*rnd* r] (random-move solution)))
+    (getAllMoves [this solution] (all-moves solution))))
 
 ;; We can do a more efficient delta evaluation
 
@@ -131,7 +153,8 @@
   (or (= (mod (inc j) n) i) (= (mod (+ 2 j) n) i)
       (= (mod (dec i) n) j) (= (mod (- i 2) n) j))
   cur-evaluation,
-  :let [cur-total (double (mrp/value cur-evaluation)),
+  :let [cur-solution (w/unwrap-solution cur-solution)
+        cur-total (double (mrp/value cur-evaluation)),
         ;; Get crucial cities
         before-reversed (nth cur-solution (mod (dec i) n))
         first-reversed (nth cur-solution i)
@@ -139,8 +162,8 @@
         after-reversed (nth cur-solution (mod (inc j) n))]
   ;; Two distances are dropped by the reversal, and two are added
   (pm/+ (pm/- cur-total
-             (get-distance distances before-reversed first-reversed)
-             (get-distance distances last-reversed after-reversed))
+              (get-distance distances before-reversed first-reversed)
+              (get-distance distances last-reversed after-reversed))
         (get-distance distances before-reversed last-reversed)
         (get-distance distances first-reversed after-reversed)))
 
@@ -150,7 +173,7 @@
   :let [sol (.getBestSolution s)
         p (.getProblem s)]
   {:solution (w/unwrap-solution sol)
-   :objective (:evaluation (.evaluate p sol))})
+   :objective (.evaluate p sol)})
 
 (def progress-listener
   (reify SearchListener
@@ -163,12 +186,11 @@
                     " steps)")))
     (newBestSolution [this search newBestSolution newBestSolutionEvaluation newBestSolutionValidation]
       (println (str "New best solution: "
-                    (:evaluation (.evaluate ^Problem (.getProblem search) newBestSolution)))))))
+                    (.evaluate ^Problem (.getProblem search) newBestSolution))))))
 
 
 (defnc random-descent-search [problem time-limit]
-  :let [search (RandomDescent. (w/->WrapProblem problem)
-                               (w/->WrapNeighborhood TSP-2-Opt-Neighborhood))]
+  :let [search (RandomDescent. problem TSP-2-Opt-Neighborhood)]
   :do (doto search
         (.addSearchListener progress-listener)
         (.addStopCriterion (MaxRuntime. time-limit TimeUnit/SECONDS))
