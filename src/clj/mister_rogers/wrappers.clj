@@ -49,20 +49,20 @@
      (mrp/validate-delta constraint (:move move) (unwrap-solution curSolution)
                          (:validation curValidation) data))))
 
-(defrecord WrapMove [move prior-state]
+(defrecord WrapMove [move]
   Move
   (apply [this solution]
     (let [^Solution solution solution
           o (.o solution)]
-      (reset! prior-state o)
+      (set! (.undo solution) o)
       (set! (.o solution) (mrp/apply-move move o))))
   (undo [this solution]
     (let [^Solution solution solution]
-      (set! (.o solution) @prior-state)
-      (reset! prior-state nil))))
+      (set! (.o solution) (.undo solution))
+      (set! (.undo solution) nil))))
 
 (defn wrap-move [move]
-  (->WrapMove move (atom nil)))
+  (->WrapMove move))
 
 (defrecord WrapNeighborhood [neighborhood]
   Neighbourhood
