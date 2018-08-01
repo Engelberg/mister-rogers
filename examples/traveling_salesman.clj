@@ -71,8 +71,7 @@
     (evaluate [this solution data] (SimpleEvaluation/WITH_VALUE
                                     (evaluate solution data)))
     (isMinimizing [this] true)
-    mrp/ObjectiveDelta
-    (evaluate-delta [this move cur-solution cur-evaluation data]
+    (evaluate [this move cur-solution cur-evaluation data]
       (SimpleEvaluation/WITH_VALUE
        (evaluate-delta move cur-solution cur-evaluation data)))))
 
@@ -84,7 +83,7 @@
 
 (def random-solution-generator
   (reify RandomSolutionGenerator
-    (create [this r d] (binding [*rnd* r] (generate-solution d)))))
+    (create [this r d] (generate-solution d))))
 
 ;; Now we can create a problem that puts these elements together
 
@@ -142,30 +141,35 @@
 (def TSP-2-Opt-Neighborhood
   (reify Neighbourhood
     (getRandomMove [this solution r]
-      (binding [*rnd* r] (random-move solution)))
+      (random-move solution))
     (getAllMoves [this solution] (all-moves solution))))
 
 ;; We can do a more efficient delta evaluation
 
-(defnc evaluate-delta [{:keys [i j] :as move} cur-solution cur-evaluation
-                       {n :num-cities distances :distances :as data}]
+(defnc evaluate-delta ^double [{:keys [i j] :as move} ^Solution cur-solution
+                               ^Evaluation cur-evaluation
+                               {n :num-cities distances :distances :as data}]
   ;; Special case when whole trip is reversed
   (or (= (mod (inc j) n) i) (= (mod (+ 2 j) n) i)
       (= (mod (dec i) n) j) (= (mod (- i 2) n) j))
-  cur-evaluation,
+  (.getValue cur-evaluation),
   :let [cur-solution (w/unwrap-solution cur-solution)
-        cur-total (double (mrp/value cur-evaluation)),
+        cur-total (.getValue cur-evaluation),
         ;; Get crucial cities
         before-reversed (nth cur-solution (mod (dec i) n))
         first-reversed (nth cur-solution i)
         last-reversed (nth cur-solution j)
         after-reversed (nth cur-solution (mod (inc j) n))]
   ;; Two distances are dropped by the reversal, and two are added
-  (pm/+ (pm/- cur-total
-              (get-distance distances before-reversed first-reversed)
-              (get-distance distances last-reversed after-reversed))
-        (get-distance distances before-reversed last-reversed)
-        (get-distance distances first-reversed after-reversed)))
+  :let [total (pm/- cur-total
+                    (get-distance distances before-reversed first-reversed))
+        total (pm/- total
+                    (get-distance distances last-reversed after-reversed))
+        total (pm/+ total
+                    (get-distance distances before-reversed last-reversed))
+        total (pm/+ total                    
+                    (get-distance distances first-reversed after-reversed))]
+  total)
 
 ;; Let's use a RandomDescent search
 
