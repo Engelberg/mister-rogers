@@ -3,7 +3,9 @@
   (:require [mister-rogers.protocols :as mrp]
             [mister-rogers.problem :as prob]
             [mister-rogers.wrappers :as w]
+            [clojure.core.matrix :as m]            
             [better-cond.core :refer [cond defnc]]
+            [primitive-math :as pm]
             [clojure.data.generators :as gen]
             [clojure.tools.reader.edn :as edn]
             [net.cgrand.xforms :as x])
@@ -14,7 +16,11 @@
            org.jamesframework.core.search.stopcriteria.MaxTimeWithoutImprovement
            org.jamesframework.core.search.listeners.SearchListener
            java.util.concurrent.TimeUnit
-           ))
+           org.jamesframework.core.problems.objectives.Objective
+           org.jamesframework.core.problems.objectives.evaluations.SimpleEvaluation
+           org.jamesframework.core.problems.objectives.evaluations.Evaluation
+           org.jamesframework.core.search.algo.ParallelTempering
+           org.jamesframework.core.search.neigh.Move))
 
 ;; traveling salesman data is given as triangular half of a matrix
 (defn triangle-indices [n]
@@ -22,25 +28,36 @@
 
 (defrecord TSPData [num-cities distances])
 
+(defnc build-matrix [n distance-map]
+  :let [m (m/zero-matrix :vectorz n n)]
+  :do (doseq [i (range n) j (range n)]
+        (m/mset! m i j (cond
+                         (> i j) (distance-map [i j])
+                         (< i j) (distance-map [j i])
+                         :else 0)))
+  m)
+
 (defnc read-file [filename]
   :let [s (str \[ (slurp filename), \])
         data (edn/read-string s)
-        n (first data)]
-  (->TSPData n (into {} (map vector (triangle-indices n) (rest data)))))
+        n (first data)
+        distance-map (into {} (map vector (triangle-indices n) (rest data)))]
+  (->TSPData n (build-matrix n distance-map)))
 
-(defnc get-distance ^double [distances i j]
-  (> i j) (distances [i j])
-  (< i j) (distances [j i])
-  :else 0)
+(defn get-distance ^double [distances i j]
+  (m/mget distances i j))
 
 ;; A TSP Solution is a vector that is a permutation of (range num-cities).
 ;; We need to define an Objective, with a way to evaluate a given solution
 
-(defnc evaluate ^double [solution {:keys [num-cities distances] :as data}]
-  (+ (get-distance distances (solution 0) (solution (dec num-cities)))
-     (transduce (comp (x/partition 2 1 (x/into []))
-                      (map #(apply get-distance distances %)))
-                + solution)))
+(defnc evaluate ^double [solution {:keys [distances] n :num-cities :as data}]
+  :let [decn (dec n)]
+  (+ (get-distance distances (nth solution 0) (nth solution decn))
+     (loop [i 0 total 0.0]
+       (cond
+         (= i decn) total
+         (recur (inc i) (+ total (m/mget distances (nth solution i)
+                                         (nth solution (inc i)))))))))
 
 (declare evaluate-delta)
 (def TSPObjective
@@ -50,7 +67,7 @@
     (minimizing? [this] true)
     mrp/ObjectiveDelta
     (evaluate-delta [this move cur-solution cur-evaluation data]
-      (evaluate-delta move cur-solution cur-evaluation data))))
+                    (evaluate-delta move cur-solution cur-evaluation data))))
 
 ;; Random solution generator to kick things off
 ;; It is crucial to use the random functions in clojure.data.generators ns
@@ -80,8 +97,8 @@
   (< i j) (into [] (concat (subvec solution 0 i)
                            (rseq (subvec solution i (inc j)))
                            (subvec solution (inc j) n)))
-  :let [reversed-section (reverse (concat (subvec solution i n)
-                                          (subvec solution 0 (inc j))))]
+  :let [reversed-section (concat (rseq (subvec solution 0 (inc j)))
+                                 (rseq (subvec solution i n)))]
   :else (into [] (concat (drop (- n i) reversed-section)
                          (subvec solution (inc j) i)
                          (take (- n i) reversed-section))))
@@ -114,18 +131,18 @@
   (or (= (mod (inc j) n) i) (= (mod (+ 2 j) n) i)
       (= (mod (dec i) n) j) (= (mod (- i 2) n) j))
   cur-evaluation,
-  :let [cur-total (mrp/value cur-evaluation),
+  :let [cur-total (double (mrp/value cur-evaluation)),
         ;; Get crucial cities
-        before-reversed (cur-solution (mod (dec i) n))
-        first-reversed (cur-solution i)
-        last-reversed (cur-solution j)
-        after-reversed (cur-solution (mod (inc j) n))]
+        before-reversed (nth cur-solution (mod (dec i) n))
+        first-reversed (nth cur-solution i)
+        last-reversed (nth cur-solution j)
+        after-reversed (nth cur-solution (mod (inc j) n))]
   ;; Two distances are dropped by the reversal, and two are added
-  (+ (- cur-total
-        (get-distance distances before-reversed first-reversed)
-        (get-distance distances last-reversed after-reversed))
-     (get-distance distances before-reversed last-reversed)
-     (get-distance distances first-reversed after-reversed)))
+  (pm/+ (pm/- cur-total
+             (get-distance distances before-reversed first-reversed)
+             (get-distance distances last-reversed after-reversed))
+        (get-distance distances before-reversed last-reversed)
+        (get-distance distances first-reversed after-reversed)))
 
 ;; Let's use a RandomDescent search
 
@@ -147,7 +164,7 @@
     (newBestSolution [this search newBestSolution newBestSolutionEvaluation newBestSolutionValidation]
       (println (str "New best solution: "
                     (:evaluation (.evaluate ^Problem (.getProblem search) newBestSolution)))))))
-      
+
 
 (defnc random-descent-search [problem time-limit]
   :let [search (RandomDescent. (w/->WrapProblem problem)
