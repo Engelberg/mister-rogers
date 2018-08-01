@@ -18,7 +18,6 @@
   (Solution. o))
 
 (defnc unwrap-solution [s]
-;;  (instance? org.jamesframework.core.subset.SubsetSolution s) s
   (.o ^Solution s))
 
 (defrecord WrapEvaluation [evaluation]
