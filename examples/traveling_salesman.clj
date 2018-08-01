@@ -1,0 +1,159 @@
+(ns traveling-salesman
+  (:refer-clojure :exclude [cond])
+  (:require [mister-rogers.protocols :as mrp]
+            [mister-rogers.problem :as prob]
+            [mister-rogers.wrappers :as w]
+            [better-cond.core :refer [cond defnc]]
+            [clojure.data.generators :as gen]
+            [clojure.tools.reader.edn :as edn]
+            [net.cgrand.xforms :as x])
+  (:import org.jamesframework.core.search.algo.RandomDescent
+           org.jamesframework.core.search.Search
+           org.jamesframework.core.problems.Problem
+           org.jamesframework.core.search.stopcriteria.MaxRuntime
+           org.jamesframework.core.search.stopcriteria.MaxTimeWithoutImprovement
+           org.jamesframework.core.search.listeners.SearchListener
+           java.util.concurrent.TimeUnit
+           ))
+
+;; traveling salesman data is given as triangular half of a matrix
+(defn triangle-indices [n]
+  (for [i (range n), j (range i)] [i j]))
+
+(defrecord TSPData [num-cities distances])
+
+(defnc read-file [filename]
+  :let [s (str \[ (slurp filename), \])
+        data (edn/read-string s)
+        n (first data)]
+  (->TSPData n (into {} (map vector (triangle-indices n) (rest data)))))
+
+(defnc get-distance ^double [distances i j]
+  (> i j) (distances [i j])
+  (< i j) (distances [j i])
+  :else 0)
+
+;; A TSP Solution is a vector that is a permutation of (range num-cities).
+;; We need to define an Objective, with a way to evaluate a given solution
+
+(defnc evaluate ^double [solution {:keys [num-cities distances] :as data}]
+  (+ (get-distance distances (solution 0) (solution (dec num-cities)))
+     (transduce (comp (x/partition 2 1 (x/into []))
+                      (map #(apply get-distance distances %)))
+                + solution)))
+
+(declare evaluate-delta)
+(def TSPObjective
+  (reify
+    mrp/Objective
+    (evaluate [this solution data] (evaluate solution data))
+    (minimizing? [this] true)
+    mrp/ObjectiveDelta
+    (evaluate-delta [this move cur-solution cur-evaluation data]
+      (evaluate-delta move cur-solution cur-evaluation data))))
+
+;; Random solution generator to kick things off
+;; It is crucial to use the random functions in clojure.data.generators ns
+
+(defn generate-solution [data]
+  (vec (gen/shuffle (range (:num-cities data)))))
+
+;; Now we can create a problem that puts these elements together
+
+(defn tsp-problem [filename]
+  (prob/->Problem (read-file filename) TSPObjective generate-solution))
+
+(def tsp1 (tsp-problem "examples/data/tsp1.txt"))
+
+;; A move is two indices, i and j, and we will reverse the subsequence
+;; from solution[i] through solution[j] (inclusive)
+;; If i>j, that indicates we need to wrap around to do reversal
+;; This is known as a 2-opt Move
+
+(declare apply-move)
+(defrecord TSP-2-Opt-Move [i j]
+  mrp/Move
+  (apply-move [move solution] (apply-move move solution)))
+
+(defnc apply-move [{:keys [i j] :as move} solution]
+  :let [n (count solution)]
+  (< i j) (into [] (concat (subvec solution 0 i)
+                           (rseq (subvec solution i (inc j)))
+                           (subvec solution (inc j) n)))
+  :let [reversed-section (reverse (concat (subvec solution i n)
+                                          (subvec solution 0 (inc j))))]
+  :else (into [] (concat (drop (- n i) reversed-section)
+                         (subvec solution (inc j) i)
+                         (take (- n i) reversed-section))))
+
+;; Now we create a neighborhood of these possible moves
+
+(defnc random-move [solution]
+  :let [n (count solution),
+        i (gen/uniform 0 n)
+        j (gen/uniform 0 (dec n))
+        j (if (>= j i) (inc j) j)]
+  (->TSP-2-Opt-Move i j))
+
+(defnc all-moves [solution]
+  :let [n (count solution)]
+  (for [i (range n), j (range n)
+        :when (not= i j)]
+    (->TSP-2-Opt-Move i j)))
+
+(def TSP-2-Opt-Neighborhood
+  (reify mrp/Neighborhood
+    (random-move [this solution] (random-move solution))
+    (all-moves [this solution] (all-moves solution))))
+
+;; We can do a more efficient delta evaluation
+
+(defnc evaluate-delta [{:keys [i j] :as move} cur-solution cur-evaluation
+                       {n :num-cities distances :distances :as data}]
+  ;; Special case when whole trip is reversed
+  (or (= (mod (inc j) n) i) (= (mod (+ 2 j) n) i)
+      (= (mod (dec i) n) j) (= (mod (- i 2) n) j))
+  cur-evaluation,
+  :let [cur-total (mrp/value cur-evaluation),
+        ;; Get crucial cities
+        before-reversed (cur-solution (mod (dec i) n))
+        first-reversed (cur-solution i)
+        last-reversed (cur-solution j)
+        after-reversed (cur-solution (mod (inc j) n))]
+  ;; Two distances are dropped by the reversal, and two are added
+  (+ (- cur-total
+        (get-distance distances before-reversed first-reversed)
+        (get-distance distances last-reversed after-reversed))
+     (get-distance distances before-reversed last-reversed)
+     (get-distance distances first-reversed after-reversed)))
+
+;; Let's use a RandomDescent search
+
+(defnc solution-info [^Search s]
+  :let [sol (.getBestSolution s)
+        p (.getProblem s)]
+  {:solution (w/unwrap-solution sol)
+   :objective (:evaluation (.evaluate p sol))})
+
+(def progress-listener
+  (reify SearchListener
+    (searchStarted [this search] (println " >>> Search started"))
+    (searchStopped [this search]
+      (println (str " >>> Search stopped ("
+                    (/ (.getRuntime search) 1000)
+                    " sec, "
+                    (.getSteps search)
+                    " steps)")))
+    (newBestSolution [this search newBestSolution newBestSolutionEvaluation newBestSolutionValidation]
+      (println (str "New best solution: "
+                    (:evaluation (.evaluate ^Problem (.getProblem search) newBestSolution)))))))
+      
+
+(defnc random-descent-search [problem time-limit]
+  :let [search (RandomDescent. (w/->WrapProblem problem)
+                               (w/->WrapNeighborhood TSP-2-Opt-Neighborhood))]
+  :do (doto search
+        (.addSearchListener progress-listener)
+        (.addStopCriterion (MaxRuntime. time-limit TimeUnit/SECONDS))
+        (.start))
+  (solution-info search))

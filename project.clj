@@ -17,11 +17,20 @@
                  [org.jamesframework/james-extensions "1.2"]
                  ;; For writing examples
                  [org.clojure/data.generators "0.1.2"]
+                 [net.cgrand/xforms "0.18.2"]
+                 [primitive-math "0.1.6"]
+                 [prismatic/hiphip "0.2.1"]
+                 [net.mikera/core.matrix "0.62.0"]
+                 [net.mikera/vectorz-clj "0.47.0"]
+                 ;; For reading data files for examples
+                 [org.clojure/tools.reader "1.3.0"]
                  [semantic-csv "0.1.0"]
                  [clojure-csv/clojure-csv "2.0.1"]]
+  :jvm-opts ^:replace ["-server"] 
   :source-paths ["src/clj"]
-  :java-source-paths ["src/java"]
-  :plugins [[lein-virgil "0.1.8"]])
+  :java-source-paths ["src/java"])
+  ;; :plugins [[lein-virgil "0.1.8"]])
+  
   
                  
 

@@ -1,6 +1,7 @@
 (ns mister-rogers.wrappers
   (:refer-clojure :exclude [cond])
   (:require [mister-rogers.protocols :as mrp]
+            [mister-rogers.problem :as prob]
             [better-cond.core :refer [cond defnc]]
             [clojure.data.generators :refer [*rnd*]])
   (:import org.jamesframework.core.problems.objectives.Objective
@@ -8,12 +9,17 @@
            org.jamesframework.core.problems.constraints.Constraint
            org.jamesframework.core.problems.constraints.validations.Validation
            org.jamesframework.core.problems.constraints.validations.PenalizingValidation
-           org.jamesframework.core.problems.sol.Solution
            org.jamesframework.core.search.neigh.Neighbourhood
-           org.jamesframework.core.search.neigh.Move))
+           org.jamesframework.core.search.neigh.Move
+           io.github.engelberg.mister_rogers.Solution
+           ))
 
-(definterface CljSolution (unwrapSolution []) (getAtom []))
-(defn unwrap-solution [o] (.unwrapSolution o))
+(defn wrap-solution [o]
+  (Solution. o))
+
+(defnc unwrap-solution [s]
+;;  (instance? org.jamesframework.core.subset.SubsetSolution s) s
+  (.o ^Solution s))
 
 (defrecord WrapEvaluation [evaluation]
   Evaluation
@@ -21,7 +27,7 @@
 
 (defrecord WrapObjective [objective]
   Objective
-  (isMinimizing [this] (mrp/minimizing? objective))
+  (isMinimizing [this] (boolean (mrp/minimizing? objective)))
   (evaluate [this solution data]
     (->WrapEvaluation (mrp/evaluate objective (unwrap-solution solution) data)))
   (evaluate [this move curSolution curEvaluation data]
@@ -31,9 +37,9 @@
 
 (defrecord WrapValidation [validation]
   Validation
-  (passed [this] (mrp/passed? validation))
+  (passed [this] (boolean (mrp/passed? validation)))
   PenalizingValidation
-  (getPenalty [this] (mrp/penalty validation)))
+  (getPenalty [this] (double (mrp/penalty validation))))
 
 (defrecord WrapConstraint [constraint]
   Constraint
@@ -44,36 +50,52 @@
      (mrp/validate-delta constraint (:move move) (unwrap-solution curSolution)
                          (:validation curValidation) data))))
 
-(defn wrap-solution [o]
-  (let [sol (atom o)]
-    (proxy [Solution CljSolution] []
-      (copy [] (wrap-solution @sol))
-      (equals [other] (= @sol (.unwrapSolution other)))
-      (hashCode [] (hash @sol))
-      (unwrapSolution [] @sol)
-      (getAtom [] sol))))
+(defrecord WrapMove [move prior-state]
+  Move
+  (apply [this solution]
+    (let [^Solution solution solution
+          o (.o solution)]
+      (reset! prior-state o)
+      (set! (.o solution) (mrp/apply-move move o))))
+  (undo [this solution]
+    (let [^Solution solution solution]
+      (set! (.o solution) @prior-state)
+      (reset! prior-state nil))))
+
+(defn wrap-move [move]
+  (->WrapMove move (atom nil)))
 
 (defrecord WrapNeighborhood [neighborhood]
   Neighbourhood
   (getRandomMove [this solution rnd]
     (binding [*rnd* rnd]
-      (mrp/random-move neighborhood (unwrap-solution solution))))
+      (wrap-move (mrp/random-move neighborhood (unwrap-solution solution)))))
   (getAllMoves [this solution]
-    (mrp/all-moves neighborhood (unwrap-solution solution))))
+    (list* (map wrap-move (mrp/all-moves neighborhood (unwrap-solution solution))))))
 
-(defrecord WrapMove [move prior-state]
-  Move
-  (apply [this solution]
-    (let [a (.getAtom solution)]
-      (reset! prior-state @a)
-      (swap! a #(mrp/apply-move move %))))
-  (undo [this solution]
-    (let [a (.getAtom solution)]
-      (reset! a @prior-state)
-      (reset! prior-state nil))))
+(defrecord WrapProblem [problem]
+  org.jamesframework.core.problems.Problem
+  (evaluate [this solution]
+    (->WrapEvaluation (prob/evaluate problem (unwrap-solution solution))))
+  (evaluate [this move curSolution curEvaluation]
+    (->WrapEvaluation (prob/evaluate-delta problem (:move move)
+                                           (unwrap-solution curSolution)
+                                           (:evaluation curEvaluation))))
+  (validate [this solution]
+    (->WrapValidation (prob/validate problem (unwrap-solution solution))))
+  (validate [this move curSolution curValidation]
+    (->WrapValidation (prob/validate-delta problem (:move move)
+                                           (unwrap-solution curSolution)
+                                           (:validation curValidation))))
+  (isMinimizing [this] (boolean (prob/minimizing? problem)))
+  (createRandomSolution [this rnd]
+    (binding [*rnd* rnd]
+      (wrap-solution (prob/create-random-solution problem))))
+  (createRandomSolution [this]
+    (wrap-solution (prob/create-random-solution problem))))
 
-(defn wrap-move [move]
-  (->WrapMove move (atom nil)))
+
+
 
 
 

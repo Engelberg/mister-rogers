@@ -8,6 +8,14 @@
 
 (defrecord Problem [data objective solution-generator mandatory-constraints penalizing-constraints])
 
+(defn ->Problem
+  ([data objective solution-generator]
+   (Problem. data objective solution-generator [] []))
+  ([data objective solution-generator mandatory-constraints]
+   (Problem. data objective solution-generator mandatory-constraints []))
+  ([data objective solution-generator mandatory-constraints penalizing-constraints]
+   (Problem. data objective solution-generator mandatory-constraints penalizing-constraints)))
+
 (defrecord PenalizedEvaluation [evaluation penalizing-validations minimizing?]
   ;; penalizing-validations is a map from constraints to validations
   mrp/Evaluation
