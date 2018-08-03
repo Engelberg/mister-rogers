@@ -26,6 +26,8 @@
                  [org.clojure/tools.reader "1.3.0"]
                  [semantic-csv "0.1.0"]
                  [clojure-csv/clojure-csv "2.0.1"]]
+  :profiles
+  {:dev {:dependencies [[com.clojure-goes-fast/clj-java-decompiler "0.1.1"]]}}
   :jvm-opts ^:replace ["-server"] 
   :source-paths ["src/clj"]
   :java-source-paths ["src/java"])

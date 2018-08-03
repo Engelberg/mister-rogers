@@ -29,7 +29,7 @@
            org.jamesframework.core.search.listeners.SearchListener
            org.jamesframework.core.search.neigh.Move))
 
-(set! *unchecked-math* true)
+;; (set! *unchecked-math* true)
 
 ;; names is a vector of Strings
 ;; dist is a 2-d core.matrix array of doubles
@@ -39,9 +39,9 @@
   (getIDs [this] ids))
 (defn get-name [{names :names} id] (nth names id))
 
-(defnc get-distance ^double [^CoreSubsetData data id1 id2]
-  :let [dist (.dist data)]
-  (m/mget dist id1 id2))
+(defn get-distance ^double [^CoreSubsetData data id1 id2]
+  (let [dist (.dist data)]
+    (m/mget dist id1 id2)))
 
 (defmacro aget2 [a i j]
   `(aget ^"[D" (aget ~a ~i) ~j))
@@ -63,32 +63,33 @@
           n (count names)]
       (CoreSubsetData.
        names       
-       (m/array :vectorz (vec (for [line (rest lines)]
-                                (mapv #(Double/parseDouble %) line))))
+       (array-2d (vec (for [line (rest lines)]
+                        (mapv #(Double/parseDouble %) line))))
        (java.util.HashSet. ^java.util.Collection
                            (map int (range (count names))))))))
 
 (def core-subset-data (read-csv-data "examples/data/coresubset.csv"))
 
-(defnc average-distance ^double [^CoreSubsetData data selected]
-  :let [n (count selected)
-        dist (.dist data)]
-  (< n 2) 0.0
-  (loop [acc 0.0 num-pairs 0 i 0 j 1]
-    (cond
-      (>= i n) (/ acc (double num-pairs))
-      (>= j n) (recur acc num-pairs (inc i) (+ i 2))
-      (recur (+ acc (m/mget dist (nth selected i) (nth selected j)))
-             (inc num-pairs) i (inc j)))))
+(defn average-distance ^double [^CoreSubsetData data ^objects selected]
+  (let [n (count selected)
+        ^"[[D" dist (.dist data)]
+    (if (< n 2) 0.0
+        (loop [acc 0.0 num-pairs 0 i 0 j 1]
+          (cond
+            (>= i n) (/ acc (double num-pairs))
+            (>= j n) (recur acc num-pairs (inc i) (+ i 2))
+            (recur (+ acc (aget2 dist (aget selected i) (aget selected j)))
+                   (inc num-pairs) i (inc j)))))))
 
 (def core-subset-objective 
   (reify Objective
     (isMinimizing [this] false)
     (evaluate [this solution data]
-      (SimpleEvaluation/WITH_VALUE
-       (cond
-         :let [selected (.toArray (.getSelectedIDs ^SubsetSolution solution))]
-         (average-distance data selected))))))
+      (let [^doubles dist (:dist data)]
+        (io.github.engelberg.mister_rogers.CoreSubset/evaluate solution dist)))))
+
+
+;;         (average-distance data selected)))))
 
 (defn core-subset-problem [subset-size]
   (SubsetProblem. core-subset-data core-subset-objective (int subset-size)))
@@ -124,6 +125,7 @@
 
 ;; CoreSubset with delta
 
+(declare average)
 (def core-subset-objective-with-delta
   (reify Objective
     (isMinimizing [this] false)

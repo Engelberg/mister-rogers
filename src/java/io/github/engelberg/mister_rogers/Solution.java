@@ -1,4 +1,6 @@
 package io.github.engelberg.mister_rogers;
+import clojure.lang.IHashEq;
+import clojure.lang.Util;
 
 public class Solution extends org.jamesframework.core.problems.sol.Solution {
     public Object o;
@@ -15,10 +17,20 @@ public class Solution extends org.jamesframework.core.problems.sol.Solution {
     
     public boolean equals(Object other) {
 	Solution s = (Solution) other;
-	return o.equals(s.o);
+	if (o instanceof IHashEq) {
+	    return Util.equiv(o,s.o);
+	}
+	else {
+	    return o.equals(s.o);
+	}
     }
     
     public int hashCode() {
-	return o.hashCode();
+	if (o instanceof IHashEq) {
+	    return (IHashEq)o.hasheq();
+	}
+	else {
+	    return o.hashCode();
+	}
     }    
 }

@@ -25,13 +25,14 @@
            org.jamesframework.core.search.algo.ParallelTempering
            org.jamesframework.core.search.neigh.Move
            io.github.engelberg.mister_rogers.Solution
+           java.util.concurrent.ThreadLocalRandom
            ))
 
 ;; traveling salesman data is given as triangular half of a matrix
 (defn triangle-indices [n]
   (for [i (range n), j (range i)] [i j]))
 
-(defrecord TSPData [num-cities distances])
+(deftype TSPData [^long num-cities distances])
 
 (defnc build-matrix [n distance-map]
   :let [m (m/zero-matrix :vectorz n n)]
@@ -47,22 +48,25 @@
         data (edn/read-string s)
         n (first data)
         distance-map (into {} (map vector (triangle-indices n) (rest data)))]
-  (->TSPData n (build-matrix n distance-map)))
+  (TSPData. n (build-matrix n distance-map)))
 
 (defn get-distance ^double [distances i j]
   (m/mget distances i j))
 
-;; A TSP Solution is a vector that is a permutation of (range num-cities).
+(defrecord TSPSolution [n tour])
+;; A TSP Solution is a vector that is a permutation of (range num-cities). n is count
 ;; We need to define an Objective, with a way to evaluate a given solution
 
-(defnc evaluate ^double [solution {:keys [distances] n :num-cities :as data}]
-  :let [decn (dec n), solution (w/unwrap-solution solution)]
-  (+ (get-distance distances (nth solution 0) (nth solution decn))
-     (loop [i 0 total 0.0]
-       (cond
-         (= i decn) total
-         (recur (inc i) (+ total (m/mget distances (nth solution i)
-                                         (nth solution (inc i)))))))))
+(defn evaluate ^double [solution ^TSPData data]
+  (let [distances (.distances data), n (.num-cities data),        
+        decn (dec n), ^TSPSolution solution (w/unwrap-solution solution),
+        solution (.tour solution)]
+    (+ (get-distance distances (nth solution 0) (nth solution decn))
+       (loop [i 0 total 0.0]
+         (cond
+           (= i decn) total
+           (recur (inc i) (+ total (m/mget distances (nth solution i)
+                                           (nth solution (inc i))))))))))
 
 (declare evaluate-delta)
 (def TSPObjective
@@ -78,8 +82,9 @@
 ;; Random solution generator to kick things off
 ;; It is crucial to use the random functions in clojure.data.generators ns
 
-(defn generate-solution [data]
-  (w/wrap-solution (vec (gen/shuffle (range (:num-cities data))))))
+(defn generate-solution [^TSPData data]
+  (w/wrap-solution (TSPSolution. (.num-cities data)
+                                 (vec (gen/shuffle (range (.num-cities data)))))))
 
 (def random-solution-generator
   (reify RandomSolutionGenerator
@@ -98,7 +103,7 @@
 ;; This is known as a 2-opt Move
 
 (declare apply-move)
-(defrecord TSP-2-Opt-Move [i j]
+(deftype TSP-2-Opt-Move [^long i ^long j]
   Move
   (apply [this solution]
     (let [^Solution solution solution
@@ -110,33 +115,36 @@
       (set! (.o solution) (.undo solution))
       (set! (.undo solution) nil))))
 
-(defnc apply-move [{:keys [i j] :as move} solution]
-  :let [n (count solution)]
-  (< i j) (into [] (concat (subvec solution 0 i)
-                           (rseq (subvec solution i (inc j)))
-                           (subvec solution (inc j) n)))
+(defnc apply-move [^TSP-2-Opt-Move move ^TSPSolution solution]
+  :let [n (.n solution)
+        solution (.tour solution)
+        i (.i move)
+        j (.j move)]
+  (< i j) (TSPSolution. n (into [] (concat (subvec solution 0 i)
+                                           (rseq (subvec solution i (inc j)))
+                                           (subvec solution (inc j) n))))
   :let [reversed-section (concat (rseq (subvec solution 0 (inc j)))
                                  (rseq (subvec solution i n)))]
-  :else (into [] (concat (drop (- n i) reversed-section)
-                         (subvec solution (inc j) i)
-                         (take (- n i) reversed-section))))
+  :else (TSPSolution. n (into [] (concat (drop (- n i) reversed-section)
+                                         (subvec solution (inc j) i)
+                                         (take (- n i) reversed-section)))))
 
 ;; Now we create a neighborhood of these possible moves
 
 (defnc random-move [solution]
-  :let [solution (w/unwrap-solution solution)
-        n (count solution),
+  :let [^TSPSolution solution (w/unwrap-solution solution)
+        n (.n solution),
         i (gen/uniform 0 n)
         j (gen/uniform 0 (dec n))
         j (if (>= j i) (inc j) j)]
-  (->TSP-2-Opt-Move i j))
+  (TSP-2-Opt-Move. i j))
 
 (defnc all-moves [solution]
-  :let [solution (w/unwrap-solution solution)
-        n (count solution)]
+  :let [^TSPSolution solution (w/unwrap-solution solution)
+        n (.n solution)]
   (for [i (range n), j (range n)
         :when (not= i j)]
-    (->TSP-2-Opt-Move i j)))
+    (TSP-2-Opt-Move. i j)))
 
 (def TSP-2-Opt-Neighborhood
   (reify Neighbourhood
@@ -146,31 +154,34 @@
 
 ;; We can do a more efficient delta evaluation
 
-(defnc evaluate-delta ^double [{:keys [i j] :as move} ^Solution cur-solution
-                               ^Evaluation cur-evaluation
-                               {n :num-cities distances :distances :as data}]
+(defn evaluate-delta ^double [^TSP-2-Opt-Move move ^Solution cur-solution
+                              ^Evaluation cur-evaluation ^TSPData data]
   ;; Special case when whole trip is reversed
-  (or (= (mod (inc j) n) i) (= (mod (+ 2 j) n) i)
-      (= (mod (dec i) n) j) (= (mod (- i 2) n) j))
-  (.getValue cur-evaluation),
-  :let [cur-solution (w/unwrap-solution cur-solution)
-        cur-total (.getValue cur-evaluation),
-        ;; Get crucial cities
-        before-reversed (nth cur-solution (mod (dec i) n))
-        first-reversed (nth cur-solution i)
-        last-reversed (nth cur-solution j)
-        after-reversed (nth cur-solution (mod (inc j) n))]
-  ;; Two distances are dropped by the reversal, and two are added
-  :let [total (pm/- cur-total
-                    (get-distance distances before-reversed first-reversed))
-        total (pm/- total
-                    (get-distance distances last-reversed after-reversed))
-        total (pm/+ total
-                    (get-distance distances before-reversed last-reversed))
-        total (pm/+ total                    
-                    (get-distance distances first-reversed after-reversed))]
-  total)
-
+  (cond
+    :let [i (.i move), j (.j move),
+          distances (.distances data), n (.num-cities data)]
+    (or (= (mod (inc j) n) i) (= (mod (+ 2 j) n) i)
+        (= (mod (dec i) n) j) (= (mod (- i 2) n) j))
+    (.getValue cur-evaluation),
+    :let [^TSPSolution cur-solution (w/unwrap-solution cur-solution)
+          cur-solution (.tour cur-solution),
+          cur-total (.getValue cur-evaluation),
+          ;; Get crucial cities
+          before-reversed (nth cur-solution (mod (dec i) n))
+          first-reversed (nth cur-solution i)
+          last-reversed (nth cur-solution j)
+          after-reversed (nth cur-solution (mod (inc j) n))]
+    ;; Two distances are dropped by the reversal, and two are added
+    :let [total (pm/- cur-total
+                      (get-distance distances before-reversed first-reversed))
+          total (pm/- total
+                      (get-distance distances last-reversed after-reversed))
+          total (pm/+ total
+                      (get-distance distances before-reversed last-reversed))
+          total (pm/+ total                    
+                      (get-distance distances first-reversed after-reversed))]
+    total))
+  
 ;; Let's use a RandomDescent search
 
 (defnc solution-info [^Search s]
