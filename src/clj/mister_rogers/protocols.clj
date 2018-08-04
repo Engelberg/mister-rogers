@@ -34,6 +34,14 @@
 (defprotocol StopCriterion
   (search-should-stop? [this search]))
 
+(defprotocol Search
+  (start [this])
+  (started [this])
+  (stop [this])
+  (init [this])
+  (step [this])
+  (disposed [this]))
+
 ;; Default implementations
 
 (extend-type Object

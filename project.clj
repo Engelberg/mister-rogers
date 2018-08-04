@@ -9,8 +9,9 @@
                  [medley "1.0.0"]
                  [com.rpl/specter "1.1.1"]
                  ;; Logging
-                 [org.clojure/tools.logging "0.4.1"]
-                 [com.taoensso/timbre "4.10.0"] 
+                 [com.taoensso/timbre "4.10.0"]
+                 ;; Time
+                 [clj-time "0.14.4"]
                  ;; Improved data structures
                  [org.clojure/data.int-map "0.2.4"]
                  ;; For simpler API namespacing

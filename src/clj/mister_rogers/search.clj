@@ -115,25 +115,30 @@
   (->SearchListener listener-map))
 
 (defn fire-search-started [{:keys [search-listeners] :as search}]
-  (doseq [{:keys [search-started]} search-listeners] (search-started search)))
+  (doseq [{:keys [search-started]} search-listeners]
+    (when search-started (search-started search))))
 
 (defn fire-search-stopped [{:keys [search-listeners] :as search}]
-  (doseq [{:keys [search-stopped]} search-listeners] (search-stopped search)))
+  (doseq [{:keys [search-stopped]} search-listeners]
+    (when search-stopped (search-stopped search)))
 
 (defnc fire-new-best-solution
   [{:keys [search-listeners] :as ^Search search}
    best-solution best-solution-evaluation best-solution-validation]
   (doseq [{:keys [new-best-solution]} search-listeners]
-    (new-best-solution
-     search best-solution best-solution-evaluation best-solution-validation)))
+    (when new-best-solution 
+      (new-best-solution
+       search best-solution best-solution-evaluation best-solution-validation))))
 
 (defnc fire-step-completed [{:keys [search-listeners] :as search}
                             ^long current-steps]
   (doseq [{:keys [step-completed]} search-listeners]
-    (step-completed current-steps)))
+    (when step-completed
+      (step-completed current-steps))))
 
 (defn fire-status-changed [{:keys [search-listeners] :as search} new-status]
-  (doseq [{:keys [status-changed]} search-listeners] (status-changed new-status)))
+  (when status-changed
+    (doseq [{:keys [status-changed]} search-listeners] (status-changed new-status))))
 
 ;; Status helpers
 
@@ -196,9 +201,9 @@
   (when (status-one-of? search #{:initializing :running})
     (change-status! search :terminating)))
 
-(defnc dispose "Sets status to dispose so it can't be restarted" [search]
-  (not (status-one-of? search #{:disposed}))
-  (change-status! search :disposed))
+(defn dispose "Sets status to dispose so it can't be restarted" [search]
+  (when-not (status-one-of? search #{:disposed})
+    (change-status! search :disposed)))
 
 ;; Updating solution
 
@@ -324,7 +329,12 @@
 
 ;; Performance testing
 
-(defrecord T1 [x])
+(defprotocol Tp
+  (get-x ^long [this]))
+
+(defrecord T1 [x]
+  Tp
+  (get-x [this] x))
 
 (defn test1 [n]
   (loop [n n t (T1. 0)]
@@ -334,7 +344,7 @@
 (defn test2 [n]
   (loop [n n ^T1 t (T1. 0)]
     (if (= n 0) t
-        (let [x (.-x t)]
+        (let [x (get-x t)]
           (recur (dec n) (T1. (inc x)))))))
 
 (defn test3 [n]
@@ -374,3 +384,14 @@
         (let [x (.-x t), y (.-y t)]
           (recur (dec n) (into t [(medley/map-entry :x (inc x)) (medley/map-entry :y (inc y))]))))))
 
+(defrecord T3 [x])
+
+(defn test9 [n]
+  (let [box (atom (assoc (T3. 0) :y 0))]
+    (loop [n n box box]
+      (if (= n 0) box
+          (recur (dec n)
+                 (do (swap! box (fn [^T3 t]
+                                  (let [y (:y t)]
+                                    (assoc t :y y))))
+                     box))))))
