@@ -17,20 +17,10 @@ public class Solution extends org.jamesframework.core.problems.sol.Solution {
     
     public boolean equals(Object other) {
 	Solution s = (Solution) other;
-	if (o instanceof IHashEq) {
-	    return Util.equiv(o,s.o);
-	}
-	else {
-	    return o.equals(s.o);
-	}
+	return Util.equiv(o,s.o);
     }
     
     public int hashCode() {
-	if (o instanceof IHashEq) {
-	    return (IHashEq)o.hasheq();
-	}
-	else {
-	    return o.hashCode();
-	}
+	return Util.hasheq(o);
     }    
 }

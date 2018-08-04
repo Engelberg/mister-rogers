@@ -31,6 +31,9 @@
   (random-move [this solution])
   (all-moves [this solution]))
 
+(defprotocol StopCriterion
+  (search-should-stop? [this search]))
+
 ;; Default implementations
 
 (extend-type Object
