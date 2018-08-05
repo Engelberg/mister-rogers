@@ -87,8 +87,9 @@
   "Takes a map with required key :problem and optional keys
 :name, :search-listeners, :stop-criterion-checker"
   [init-map]
-  :let [state {:start-time -1, :stop-time -1, :current-steps -1, :last-improvement-time -1,
-               :steps-since-last-improvement -1, :improvement-during-current-step? false
+  :let [state {:start-time -1, :stop-time -1, :current-steps -1,
+               :last-improvement-time -1, :steps-since-last-improvement -1,
+               :improvement-during-current-step? false
                :min-delta -1.0, :status :idle}
         id (get-next-id)
         default-map {:name "Search"
@@ -100,7 +101,8 @@
   :do (infof "Created search %s" search)
   search)
 
-(defrecord SearchListener [search-started search-stopped new-best-solution step-completed status-changed])
+(defrecord SearchListener [search-started search-stopped new-best-solution
+                           step-completed status-changed])
 (def ^:private valid-search-listener-key? (set (keys (map->SearchListener {}))))
 (defnc search-listener "Takes a map with the following optional keys, and functions as values:
   :search-started - (fn [search])
@@ -120,7 +122,7 @@
 
 (defn fire-search-stopped [{:keys [search-listeners] :as search}]
   (doseq [{:keys [search-stopped]} search-listeners]
-    (when search-stopped (search-stopped search)))
+    (when search-stopped (search-stopped search))))
 
 (defnc fire-new-best-solution
   [{:keys [search-listeners] :as ^Search search}
@@ -243,6 +245,8 @@
    :do (fire-new-best-solution search new-solution new-evaluation new-validation)
    true))
 
+;; Helper functions
+
 (defn get-runtime
   "If search is running or terminating, returns runtime since beginning of run in ms.
    If search is idle or disposed, returns runtime of last run in ms, or -1 if no run yet.
@@ -279,6 +283,8 @@
   (prob/minimizing? problem) (- (mrp/value previous-evaluation) (mrp/value current-evaluation))
   :else (- (mrp/value current-evaluation) (mrp/value previous-evaluation)))
 
+;; Search callbacks
+
 (defn search-started [^Search search]
   ;; Initialize search by calling init ?
   (let [state (.-state search)
@@ -304,9 +310,10 @@
 (defn search-stopped [^Search search]
   (swap! (.-state search) assoc :stop-time (System/currentTimeMillis)))
 
+(defn search-step [^Search search])
+
 (defn search-disposed [^Search search])
 
-(defn search-step [^Search search])
 
 
 
