@@ -13,7 +13,7 @@
             [mister-rogers.stop-criterion-checker :as crit]))
 
 (declare init start stop search-started search-stopped search-disposed search-step
-         compute-delta)
+         get-runtime get-steps compute-delta)
 
 (def next-id (atom 0))
 (defn get-next-id [] (swap! next-id inc))
@@ -137,7 +137,7 @@
   (fire-search-started search)
   (search-started search)  
   (when (continue-search? search)
-    (crit/start-checking search stop-criterion-checker)
+    (crit/start-checking stop-criterion-checker search)
     (change-status! search :running)
     (while (continue-search? search)
       (let [before-best @(:best search),
@@ -151,13 +151,13 @@
                 (inc (.-steps-since-last-improvement step-info)))]
         (reset! step-info (StepInfo. current-steps steps-since-last-improvement))
         (fire-step-completed search current-steps))
-      (when (crit/stop-criterion-satisfied? stop-criterion-checker)
+      (when (crit/stop-criterion-satisfied? stop-criterion-checker search)
         (stop search)))
-    (crit/stop-checking search stop-criterion-checker))
+    (crit/stop-checking stop-criterion-checker search))
   (search-stopped search)
   (fire-search-stopped search)
   (infof "Search %s stopped (runtime: %d ms, steps: %d" search
-         (get-runtime search) (:current-steps @a-step-info))
+         (get-runtime search) (get-steps search))
   (change-status! search :idle))
 
 (defn stop "Sets status to terminating to interrupt search" [search]
@@ -180,7 +180,7 @@
                  stop-time (.-stop-time timestamps)]
              (Timestamps. start-time stop-time (System/currentTimeMillis))))))
 
-(defn update-min-delta [a-min-delta]
+(defn update-min-delta [a-min-delta ^double delta]
   (swap! a-min-delta
          (fn [^double min-delta]
            (if (or (= min-delta -1.0) (< delta min-delta))
@@ -204,14 +204,14 @@
                       best-evaluation (.-evaluation best),
                       delta (compute-delta search new-evaluation best-evaluation)]
                 (not (or (nil? best-solution) (> delta 0.0))) best ;; no improve
-                :do (update-min-delta (.-a-min-delta search))                
+                :do (update-min-delta (.-a-min-delta search) delta)
                 :do (update-improvement-time (.-a-timestamps search))
                 (SEV. new-solution new-evaluation new-validation))))
 
      (fire-new-best-solution search new-solution new-evaluation new-validation)
      true)))
 
-;; Helper computation functions
+;; Helper computation functions for stop criteria primarily
 
 (defn get-runtime
   "If search is running or terminating, returns millis since beginning of run.
@@ -228,6 +228,12 @@
       (or (= status :idle) (= status :disposed))
       (if (= stop-time -1) -1 (- stop-time start-time)),
       :else (- (System/currentTimeMillis) start-time))))
+
+(defn get-steps ^long [{:keys [a-step-info]}]
+  (let [^StepInfo step-info @a-step-info]
+    (.-current-steps step-info)))
+
+(defn get-min-delta ^double [{:keys [a-min-delta]}] @a-min-delta)
 
 (defn get-time-without-improvement
   "If search is running or terminating, returns runtime since last improvement.
@@ -251,9 +257,9 @@
   (cond
     :let [status @v-status]
     (= status :initializing) -1
-    :let [^StepInfo @a-step-info
+    :let [^StepInfo step-info @a-step-info
           steps-since-last-improvement (.-steps-since-last-improvement step-info)]
-    (= steps-since-last-improvement -1) (.-current-steps )
+    (= steps-since-last-improvement -1) (.-current-steps step-info)
     :else steps-since-last-improvement))
 
 (defn compute-delta ^double [^Search search current-evaluation previous-evaluation]
@@ -270,7 +276,7 @@
   ;; (init search)
   (reset! a-timestamps (Timestamps. (System/currentTimeMillis) -1 -1))
   (reset! a-step-info (StepInfo. 0 -1))
-  (reset! min-delta -1))
+  (reset! a-min-delta -1))
 
 (defn search-stopped [^Search search]
   (swap! (.-state search) assoc :stop-time (System/currentTimeMillis)))
@@ -280,92 +286,3 @@
 (defn search-disposed [search])
 
 (defn init [search])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-;; Performance testing
-
-(defprotocol Tp
-  (get-x ^long [this]))
-
-(defrecord T1 [x]
-  Tp
-  (get-x [this] x))
-
-(defn test1 [n]
-  (loop [n n t (T1. 0)]
-    (if (= n 0) t
-        (recur (dec n) (update t :x inc)))))
-
-(defn test2 [n]
-  (loop [n n ^T1 t (T1. 0)]
-    (if (= n 0) t
-        (let [x (get-x t)]
-          (recur (dec n) (T1. (inc x)))))))
-
-(defn test3 [n]
-  (loop [n n ^T1 t (T1. 0)]
-    (if (= n 0) t
-        (let [x (.-x t)]
-          (recur (dec n) (assoc t :x (inc x)))))))
-
-(defrecord T2 [^long x ^long y])
-
-(defn test4[n]
-  (loop [n n t (T2. 0 0)]
-    (if (= n 0) t
-        (recur (dec n) (update t :x inc)))))
-
-(defn test5 [n]
-  (loop [n n ^T2 t (T2. 0 0)]
-    (if (= n 0) t
-        (let [x (.-x t) y (.-y t)]
-          (recur (dec n) (T2. (inc x) y))))))
-
-(defn test6 [n]
-  (loop [n n ^T2 t (T2. 0 0)]
-    (if (= n 0) t
-        (let [x (.-x t)]
-          (recur (dec n) (assoc t :x (inc x)))))))
-
-(defn test7 [n]
-  (loop [n n ^T2 t (T2. 0 0)]
-    (if (= n 0) t
-        (let [x (.-x t), y (.-y t)]
-          (recur (dec n) (assoc t :x (inc x) :y (inc y)))))))
-
-(defn test8 [n]
-  (loop [n n ^T2 t (T2. 0 0)]
-    (if (= n 0) t
-        (let [x (.-x t), y (.-y t)]
-          (recur (dec n) (into t [(medley/map-entry :x (inc x)) (medley/map-entry :y (inc y))]))))))
-
-(defrecord T3 [x])
-
-(defn test9 [n]
-  (let [box (atom (assoc (T3. 0) :y 0))]
-    (loop [n n box box]
-      (if (= n 0) box
-          (recur (dec n)
-                 (do (swap! box (fn [^T3 t]
-                                  (let [y (:y t)]
-                                    (assoc t :y y))))
-                     box))))))

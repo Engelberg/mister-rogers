@@ -34,6 +34,11 @@
 (defprotocol StopCriterion
   (search-should-stop? [this search]))
 
+;; (defprotocol StopCriterionChecker
+;;   (start-checking [this search])
+;;   (stop-checking [this search])
+;;   (stop-criterion-satisfied? [this search]))
+
 (defprotocol Search
   (init [this])
   (start [this])

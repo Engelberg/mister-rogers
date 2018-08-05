@@ -16,6 +16,8 @@
            java.util.concurrent.ThreadFactory
            java.util.concurrent.TimeUnit))
 
+(declare start-checking stop-checking stop-criterion-satisfied?)
+
 (def scheduler (Executors/newSingleThreadScheduledExecutor
                 (reify ThreadFactory
                   (newThread [this runnable]
@@ -25,6 +27,13 @@
 
 (defrecord StopCriterionChecker [stop-criteria, ^long period,
                                  ^TimeUnit period-time-unit, running])
+  ;; mrp/StopCriterionChecker
+  ;; (stop-criterion-satisfied? [this search]
+  ;;   (stop-criterion-satisfied? [this search]))
+  ;; (start-checking [this search]
+  ;;   (start-checking this search))
+  ;; (stop-checking [this search]
+  ;;   (stop-checking this search)))
 
 (defrecord Running [^Runnable running-task ^ScheduledFuture running-task-future])
 
@@ -33,55 +42,46 @@
   ([stop-criteria period period-time-unit]
    (StopCriterionChecker. stop-criteria period period-time-unit
                           (atom (map->Running {})))))
-  
+
 (defn stop-criterion-satisfied?
-  [search stop-criteria]
+  [stop-criteria search]
   (some (fn [stop-criterion] (mrp/search-should-stop? stop-criterion search))
         stop-criteria))
 
 (declare stop) ;; TBD Deal with this circular reference
 (declare stop-checking)
 (defn stop-criterion-check-task
-  [search {:keys [stop-criteria] :as stop-criterion-checker}]
+  [{:keys [stop-criteria] :as stop-criterion-checker} search]
   (fn []
     (cond
-      (stop-criterion-satisfied? search stop-criteria)
-      (do (stop-checking search stop-criterion-checker)
+      (stop-criterion-satisfied? stop-criteria search)
+      (do (stop-checking stop-criterion-checker search)
           (debugf "Requesting search (%s:%d) to stop" (:name search) (:id search))
-          (stop search)), ; this is a circular reference problem
+          (mrp/stop search)), 
       :else
       (debug "Aborting cancelled stop criterion check task"))))
-  
-(defn start-checking [search {:keys [stop-criteria period period-time-unit running]
-                              :as stop-criterion-checker}]
+
+(defn start-checking [{:keys [stop-criteria period period-time-unit running]
+                       :as stop-criterion-checker}
+                      search]
   (swap! running
          (fn [{:keys [running-task running-task-future]}]
            (cond
-             running-task (warnf "Attempted to activate already active stop criterion checker for search %s" (label search))
+             running-task (warnf "Attempted to activate already active stop criterion checker for search %s" search)
              (empty? stop-criteria) nil
              :let [running-task
-                   (stop-criterion-check-task search stop-criterion-checker),
+                   (stop-criterion-check-task stop-criterion-checker search),
                    running-task-future
                    (.scheduleWithFixedDelay scheduler running-task period period
                                             period-time-unit)]
-             :do (debugf "Stop criterion checker for search (%s:%d) activated"
-                         name id)
+             :do (debugf "Stop criterion checker for search %s activated" search)
              (Running. running-task running-task-future)))))
 
-(defn stop-checking [search {:keys [running] :as stop-criterion-checker}]
+(defn stop-checking [{:keys [running] :as stop-criterion-checker} search]
   (swap! running
          (fn [{:keys [running-task ^ScheduledFuture running-task-future]}]
            (cond
              (nil? running-task) nil
              :do (.cancel running-task-future false)
-             :do (debugf "Stop criterion checker for search %s deactivated"
-                         (label search))
+             :do (debugf "Stop criterion checker for search %s deactivated" search)
              (Running. nil nil)))))
-
-  
-           
-
-
-
-
-
