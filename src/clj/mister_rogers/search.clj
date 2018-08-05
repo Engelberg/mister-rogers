@@ -12,8 +12,7 @@
             [mister-rogers.problem :as prob]
             [mister-rogers.stop-criterion-checker :as crit]))
 
-(declare init start stop search-started search-stopped search-disposed search-step
-         get-runtime get-steps compute-delta)
+(declare get-runtime get-steps compute-delta)
 
 (def next-id (atom 0))
 (defn get-next-id [] (swap! next-id inc))
@@ -32,8 +31,14 @@
 
 (defrecord Search [name id problem search-listeners stop-criterion-checker
                    a-timestamps a-best a-current a-step-info a-min-delta v-status]
+  mrp/Search
+  (init [this] (init this))
+  (start [this] (start this))
+  (stop [this] (stop this))
+  (search-started [this] (search-started this))
+  (search-stopped [this] (search-stopped this))
   Runnable
-  (run [this] (start this))
+  (run [this] (start this))  
   Object
   (toString [this] (label this)))
 
@@ -46,7 +51,9 @@
 
 (defnc search
   "Takes a map with required key :problem and optional keys
-:name, :search-listeners, :stop-criterion-checker"
+:name, :search-listeners, :stop-criterion-checker.
+Creates a search that tracks best solution found so far.
+Usually used to aggregate information from other searches."
   [init-map]
   :let [default-map {:name "Search"
                      :id (get-next-id)
@@ -62,13 +69,28 @@
   :do (infof "Created search %s" search)
   search)
 
+(defnc local-search
+  "Takes a map with required key :problem and optional keys
+:name, :search-listeners, :stop-criterion-checker.
+Creates a local search, which tracks best solution and also has a notion of
+a current solution as it explores the solution space."
+  [init-map]
+  :let [default-map {:name "LocalSearch"
+                     :a-current (atom (SEV. nil nil nil))}]
+  (nil? (:problem init-map))
+  (throw (ex-info ":problem is required key for init-map in search" init-map)),
+  :let [search (search (merge default-map init-map))]
+  :do (infof "Created search %s" search)
+  search)
+
 (defrecord SearchListener [search-started search-stopped new-best-solution
-                           step-completed status-changed])
+                           new-current-solution step-completed status-changed])
 (def ^:private valid-search-listener-key? (set (keys (map->SearchListener {}))))
 (defnc search-listener "Takes a map with the following optional keys, and functions as values:
   :search-started - (fn [search])
   :search-stopped - (fn [search])
   :new-best-solution - (fn [search new-best-solution new-best-evaluation new-best-validation])
+  :new-current-solution - (fn [search new-current-solution new-current-evaluation new-current-validation])
   :step-completed - (fn [search num-steps])
   :status-changed - (fn [search new-status])"
   [listener-map]
@@ -92,6 +114,14 @@
     (when new-best-solution 
       (new-best-solution
        search best-solution best-evaluation best-validation))))
+
+(defn fire-new-current-solution
+  [{:keys [search-listeners] :as ^Search search}
+   current-solution current-evaluation current-validation]
+  (doseq [{:keys [new-current-solution]} search-listeners]
+    (when new-current-solution 
+      (new-current-solution
+       search current-solution current-evaluation current-validation))))
 
 (defn fire-step-completed [{:keys [search-listeners] :as search}
                            ^long current-steps]
@@ -135,7 +165,7 @@
     (change-status! search :initializing))
   (infof "Search %s started" search)  
   (fire-search-started search)
-  (search-started search)  
+  (mrp/search-started search)  
   (when (continue-search? search)
     (crit/start-checking stop-criterion-checker search)
     (change-status! search :running)
@@ -152,9 +182,9 @@
         (reset! step-info (StepInfo. current-steps steps-since-last-improvement))
         (fire-step-completed search current-steps))
       (when (crit/stop-criterion-satisfied? stop-criterion-checker search)
-        (stop search)))
+        (mrp/stop search)))
     (crit/stop-checking stop-criterion-checker search))
-  (search-stopped search)
+  (mrp/search-stopped search)
   (fire-search-stopped search)
   (infof "Search %s stopped (runtime: %d ms, steps: %d" search
          (get-runtime search) (get-steps search))
@@ -210,6 +240,32 @@
 
      (fire-new-best-solution search new-solution new-evaluation new-validation)
      true)))
+
+(defn update-current-solution "Updates solution, even if invalid"
+  ([^Search search new-solution]
+   (let [problem (.-problem search),
+         new-validation (prob/validate problem new-solution)
+         new-evaluation (prob/evaluate problem new-solution)]
+     (update-current-solution search new-solution new-evaluation new-validation)))
+  
+  ([^Search search new-solution new-evaluation new-validation]
+   (reset! (.-a-current search) (SEV. new-solution new-evaluation new-validation))
+   (fire-new-current-solution search new-solution new-evaluation new-validation)))
+
+(defn update-current-and-best-solution
+  "Current solution updates no matter what, even if invalid, while the
+  best solution will only update if it is better than the previous best solution.
+  Returns true if best solution was updated."
+  ([^Search search new-solution]
+   (let [problem (.-problem search),
+         new-validation (prob/validate problem new-solution)
+         new-evaluation (prob/evaluate problem new-solution)]
+     (update-current-and-best-solution
+      search new-solution new-evaluation new-validation)))
+  
+  ([^Search search new-solution new-evaluation new-validation]
+   (update-current-solution search new-solution new-evaluation new-validation)
+   (update-best-solution search new-solution new-evaluation new-validation)))
 
 ;; Helper computation functions for stop criteria primarily
 
@@ -272,8 +328,7 @@
 ;; Search callbacks
 
 (defn search-started [{:keys [a-timestamps a-min-delta a-step-info] :as search}]
-  ;; Initialize search by calling init ?
-  ;; (init search)
+  (mrp/init search)
   (reset! a-timestamps (Timestamps. (System/currentTimeMillis) -1 -1))
   (reset! a-step-info (StepInfo. 0 -1))
   (reset! a-min-delta -1))
@@ -281,8 +336,11 @@
 (defn search-stopped [^Search search]
   (swap! (.-state search) assoc :stop-time (System/currentTimeMillis)))
 
-(defn search-step [search])
-
-(defn search-disposed [search])
-
-(defn init [search])
+(defnc init "Generates current solution if needed"
+  [search]
+  :when-let [a-current (:a-current search)]
+  :let [problem (:problem search)
+        current-solution (:current-solution @a-current)]
+  current-solution nil ;; Solution already is present
+  :let [random-solution (prob/create-random-solution problem)]
+  (update-current-and-best-solution random-solution))

@@ -34,11 +34,6 @@
 (defprotocol StopCriterion
   (search-should-stop? [this search]))
 
-;; (defprotocol StopCriterionChecker
-;;   (start-checking [this search])
-;;   (stop-checking [this search])
-;;   (stop-criterion-satisfied? [this search]))
-
 (defprotocol Search
   (init [this])
   (start [this])
@@ -47,6 +42,13 @@
   (search-stopped [this])
   (search-step [this])
   (search-disposed [this]))
+
+(defprotocol EvaluatedMoveCache
+  (cache-move-evaluation [cache move evaluation])
+  (get-cached-move-evaluation [cache move])
+  (cache-move-validation [cache move validation])
+  (get-cached-move-validation [cache move])
+  (clear [cache]))
 
 ;; Default implementations
 
