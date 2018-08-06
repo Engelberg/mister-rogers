@@ -1,8 +1,6 @@
-(ns mister-rogers.protocols)
-
-(defprotocol Objective
+(ns mister-rogers.protocols)(defprotocol Objective)
   (evaluate [this solution data] "Return number or Evaluation")
-  (minimizing? [this]))
+  (minimizing? [this])
 
 (defprotocol ObjectiveDelta
   "Optionally implement this protocol if there is a more efficient way to evaluate one solution in terms of another"
@@ -40,6 +38,7 @@
   (stop [this])
   (search-started [this])
   (search-stopped [this])
+  ;; The following two aren't implemented in the "base classes" only in overrides
   (search-step [this])
   (search-disposed [this]))
 
