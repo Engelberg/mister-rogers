@@ -13,7 +13,8 @@
             [mister-rogers.stop-criterion-checker :as crit]
             [mister-rogers.cache :as cache]))
 
-(declare get-runtime get-steps compute-delta)
+(declare get-runtime get-steps compute-delta
+         init start stop search-started search-stopped)
 
 (def next-id (atom 0))
 (defn get-next-id [] (swap! next-id inc))
@@ -184,7 +185,7 @@ explore out from a randomly-generated solution, to optimize."
     (change-status! search :initializing))
   (infof "Search %s started" search)  
   (fire-search-started search)
-  (mrp/search-started search)  
+  (search-started search)  
   (when (continue-search? search)
     (crit/start-checking stop-criterion-checker search)
     (change-status! search :running)
@@ -201,9 +202,9 @@ explore out from a randomly-generated solution, to optimize."
         (reset! step-info (StepInfo. current-steps steps-since-last-improvement))
         (fire-step-completed search current-steps))
       (when (crit/stop-criterion-satisfied? stop-criterion-checker search)
-        (mrp/stop search)))
+        (stop search)))
     (crit/stop-checking stop-criterion-checker search))
-  (mrp/search-stopped search)
+  (search-stopped search)
   (fire-search-stopped search)
   (infof "Search %s stopped (runtime: %d ms, steps: %d" search
          (get-runtime search) (get-steps search))
@@ -348,7 +349,7 @@ explore out from a randomly-generated solution, to optimize."
 ;; Search callbacks
 
 (defn search-started [{:keys [a-timestamps a-min-delta a-step-info] :as search}]
-  (mrp/init search)
+  (init search)
   (reset! a-timestamps (Timestamps. (System/currentTimeMillis) -1 -1))
   (reset! a-step-info (StepInfo. 0 -1))
   (reset! a-min-delta -1))
