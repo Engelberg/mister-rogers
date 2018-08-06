@@ -10,7 +10,8 @@
                      spy get-env]]
             [mister-rogers.search :as search]
             [mister-rogers.protocols :as mrp]
-            [mister-rogers.problem :as prob])
+            [mister-rogers.problem :as prob]
+            [primitive-math :as pm])
   (:import mister_rogers.search.Search
            mister_rogers.search.SEV))
 

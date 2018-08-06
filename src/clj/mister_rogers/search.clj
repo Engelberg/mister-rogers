@@ -11,7 +11,8 @@
             [mister-rogers.protocols :as mrp]
             [mister-rogers.problem :as prob]
             [mister-rogers.stop-criterion-checker :as crit]
-            [mister-rogers.cache :as cache]))
+            [mister-rogers.cache :as cache]
+            [primitive-math :as pm]))
 
 (declare get-runtime get-steps compute-delta
          init start stop search-started search-stopped)
@@ -299,8 +300,8 @@ explore out from a randomly-generated solution, to optimize."
             start-time (.-start-time timestamps)
             stop-time (.-stop-time timestamps)]
       (or (= status :idle) (= status :disposed))
-      (if (= stop-time -1) -1 (- stop-time start-time)),
-      :else (- (System/currentTimeMillis) start-time))))
+      (if (= stop-time -1) -1 (pm/- stop-time start-time)),
+      :else (pm/- (System/currentTimeMillis) start-time))))
 
 (defn get-steps ^long [{:keys [a-step-info]}]
   (let [^StepInfo step-info @a-step-info]
@@ -322,8 +323,8 @@ explore out from a randomly-generated solution, to optimize."
             stop-time (.-stop-time timestamps)]
       (= last-improvement-time -1) (get-runtime search)
       (or (= status :idle) (= status :disposed))
-      (- stop-time last-improvement-time)
-      :else (- (System/currentTimeMillis) last-improvement-time))))
+      (pm/- stop-time last-improvement-time)
+      :else (pm/- (System/currentTimeMillis) last-improvement-time))))
 
 (defn get-steps-without-improvement
   ^long [{:keys [a-step-info v-status] :as search}]
@@ -335,12 +336,12 @@ explore out from a randomly-generated solution, to optimize."
     (= steps-since-last-improvement -1) (.-current-steps step-info)
     :else steps-since-last-improvement))
 
-(defn ^:static compute-delta ^double [^Search search current-evaluation previous-evaluation]
+(defn compute-delta ^double [^Search search current-evaluation previous-evaluation]
   (cond
     :let [problem (.-problem search)]
     (prob/minimizing? problem)
-    (- (mrp/value previous-evaluation) (mrp/value current-evaluation)),
-    :else (- (mrp/value current-evaluation) (mrp/value previous-evaluation))))
+    (pm/- (mrp/value previous-evaluation) (mrp/value current-evaluation)),
+    :else (pm/- (mrp/value current-evaluation) (mrp/value previous-evaluation))))
 
 ;; Search callbacks
 
