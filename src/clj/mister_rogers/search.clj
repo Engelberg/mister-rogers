@@ -382,7 +382,7 @@ explore out from a randomly-generated solution, to optimize."
                     problem move (.-solution current) (.-evaluation current))]
   :do (when cache (cache/cache-move-evaluation cache move evaluation))
   evaluation)
-        
+
 (defnc validate-move [^Search search move]
   :let [cache (.-cache search),
         problem (.-problem search),
@@ -410,7 +410,7 @@ explore out from a randomly-generated solution, to optimize."
    (get-best-move moves require-improvement? false filters))
   ([^Search search moves require-improvement? accept-first-improvement? filters]
    :let [cache (.-cache search)
-         ^SEV current (.-current search),
+         ^SEV current @(.-a-current search),
          current-evaluation (.-evaluation current)]
    (loop [moves (seq moves), chosen-move nil,
           chosen-move-delta (- Double/MAX_VALUE)
@@ -439,8 +439,38 @@ explore out from a randomly-generated solution, to optimize."
        (recur (next moves) move delta evaluation validation)
        :else (recur (next moves) chosen-move chosen-move-delta
                     chosen-move-evaluation chosen-move-validation)))))
-       
-       
-       
-     
 
+(defnc accept-move [^Search search move]
+  :let [validation (validate-move search move)]
+  (not (mrp/passed? validation)) false
+  :let [evaluation (evaluate-move search move)
+        ^SEV current @(.-a-current search),
+        new-solution (mrp/apply-move move (.-solution current))]
+  :do (update-current-and-best-solution search new-solution evaluation validation)
+  :do (swap! (.-a-num-accepted-moves search) inc)
+  true)
+
+(defn reject-move [^Search search move]
+  (swap! (.-a-num-rejected-moves search) inc))
+
+
+
+protected boolean accept(Move<? super SolutionType> move){
+        // validate move (often retrieved from cache)
+        Validation newValidation = validate(move);
+        if(newValidation.passed()){
+            // evaluate move (often retrieved from cache)
+            Evaluation newEvaluation = evaluate(move);
+            // apply move to current solution (IMPORTANT: after evaluation/validation of the move!)
+            move.apply(getCurrentSolution());
+            // update current solution and best solution
+            updateCurrentAndBestSolution(getCurrentSolution(), newEvaluation, newValidation);
+            // increase accepted move counter
+            incNumAcceptedMoves(1);
+            // update successful
+            return true;
+        } else {
+            // update cancelled: invalid neighbour
+            return false;
+        }
+}
