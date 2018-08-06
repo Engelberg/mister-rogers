@@ -65,7 +65,8 @@
              :let [running-task
                    (stop-criterion-check-task stop-criterion-checker search stop),
                    running-task-future
-                   (.scheduleWithFixedDelay scheduler running-task period period
+                   (.scheduleWithFixedDelay ^ScheduledExecutorService scheduler
+                                            running-task period period
                                             period-time-unit)]
              :do (debugf "Stop criterion checker for search %s activated" search)
              (Running. running-task running-task-future)))))

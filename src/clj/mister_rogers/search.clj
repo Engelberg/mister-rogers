@@ -97,6 +97,8 @@ explore out from a randomly-generated solution, to optimize."
         search (local-search (merge default-map init-map))]
   search)
 
+;; Search listeners
+
 (defrecord SearchListener [search-started search-stopped new-best-solution
                            new-current-solution step-completed status-changed])
 (def ^:private valid-search-listener-key? (set (keys (map->SearchListener {}))))
@@ -333,7 +335,7 @@ explore out from a randomly-generated solution, to optimize."
     (= steps-since-last-improvement -1) (.-current-steps step-info)
     :else steps-since-last-improvement))
 
-(defn compute-delta ^double [^Search search current-evaluation previous-evaluation]
+(defn ^:static compute-delta ^double [^Search search current-evaluation previous-evaluation]
   (cond
     :let [problem (.-problem search)]
     (prob/minimizing? problem)
@@ -394,7 +396,7 @@ explore out from a randomly-generated solution, to optimize."
     (and (not (nil? move))
          (mrp/passed? (validate-move search move))
          (or (not (mrp/passed? current-validation))
-             (< 0.0 (compute-delta (evaluate-move search move)
+             (< 0.0 (compute-delta search (evaluate-move search move)
                                    (.-evaluation current)))))))
 
 (defnc get-best-move
@@ -425,7 +427,7 @@ explore out from a randomly-generated solution, to optimize."
               chosen-move-evaluation chosen-move-validation),
        ;; Choose move if it is better, and is improvement or we don't care
        :let [evaluation (evaluate-move search move),
-             delta (compute-delta evaluation current-evaluation)]
+             delta (compute-delta search evaluation current-evaluation)]
        (and (> delta chosen-move-delta)
             (or (not require-improvement?) (improvement-move? move)))
        (recur (next moves) move delta evaluation validation)
@@ -444,8 +446,3 @@ explore out from a randomly-generated solution, to optimize."
 
 (defn reject-move [^Search search move]
   (swap! (.-a-num-rejected-moves search) inc))
-
-(defn test ^double [] 0.0)
-(defn call-test []
-  (let [x (test)]
-    x))
