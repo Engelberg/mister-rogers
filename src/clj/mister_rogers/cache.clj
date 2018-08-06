@@ -35,9 +35,3 @@
   :when-let [^MoveValidation move-validation @(.-v-validation cache)]
   :let [validated-move (.-move move-validation)]
   (= validated-move move) (.-validation move-validation))
-
-
-  
-
-
-

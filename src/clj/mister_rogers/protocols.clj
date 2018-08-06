@@ -1,46 +1,51 @@
-(ns mister-rogers.protocols)(defprotocol Objective)
+(ns mister-rogers.protocols)
+
+(defprotocol Objective
   (evaluate [this solution data] "Return number or Evaluation")
-  (minimizing? [this])
+  (minimizing? [this]))
 
 (defprotocol ObjectiveDelta
   "Optionally implement this protocol if there is a more efficient way to evaluate one solution in terms of another"
   (evaluate-delta [this move cur-solution cur-evaluation data]))
 
 (defprotocol Evaluation
-  (value [this] "Return number"))
+  (value [evaluation] "Return number"))
 
 (defprotocol Constraint
-  (validate [this solution data] "Return Validation, move arity is optional"))
+  (validate [constraint solution data] "Return Validation, move arity is optional"))
 
 (defprotocol ConstraintDelta
   "Optionally implement this protocol if there is a more efficient way to evaluate one constraint in terms of another"
-  (validate-delta [this move cur-solution cur-validation data]))
+  (validate-delta [constraint move cur-solution cur-validation data]))
 
 (defprotocol Validation
-  (passed? [this]))
+  (passed? [validation]))
 
 (defprotocol PenalizingValidation
-  (penalty [this] "Return zero if validation passes, or positive penalty"))
+  (penalty [validation] "Return zero if validation passes, or positive penalty"))
 
 (defprotocol Move
-  (apply-move [this solution] "Return Solution"))
+  (apply-move [move solution] "Return Solution"))
 
 (defprotocol Neighborhood
-  (random-move [this solution])
-  (all-moves [this solution]))
+  (random-move [neighborhood solution])
+  (all-moves [neighborhood solution]))
 
 (defprotocol StopCriterion
   (search-should-stop? [this search]))
 
-(defprotocol Search
-  (init [this])
-  (start [this])
-  (stop [this])
-  (search-started [this])
-  (search-stopped [this])
-  ;; The following two aren't implemented in the "base classes" only in overrides
-  (search-step [this])
-  (search-disposed [this]))
+;; (defprotocol SearchStrategy
+;;   (init [this])
+;;   (start [this])
+;;   (stop [this])
+;;   (search-started [this])
+;;   (search-stopped [this])
+;;   ;; The following two aren't implemented in the "base classes" only in overrides
+;;   (search-step [this])
+;;   (search-disposed [this]))
+
+(defprotocol SearchStrategy
+  (search-step [strategy search]))
 
 (defprotocol EvaluatedMoveCache
   (cache-move-evaluation [cache move evaluation])

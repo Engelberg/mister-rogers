@@ -34,12 +34,6 @@
 (defrecord Search [name id problem strategy search-listeners stop-criterion-checker
                    a-timestamps a-best a-current a-step-info a-min-delta v-status
                    neighborhood a-num-accepted-moves a-num-rejected-moves cache]
-  mrp/Search
-  (init [this] (init this))
-  (start [this] (start this))
-  (stop [this] (stop this))
-  (search-started [this] (search-started this))
-  (search-stopped [this] (search-stopped this))
   Runnable
   (run [this] (start this))  
   Object
@@ -178,7 +172,7 @@ explore out from a randomly-generated solution, to optimize."
 
 ;; Search control functions
 
-(defn start [{:keys [stop-criterion-checker a-step-info v-status]
+(defn start [{:keys [stop-criterion-checker a-step-info v-status strategy]
               :as search}]
   (locking v-status
     (assert-status search #{:idle} "Cannot start search")
@@ -191,7 +185,7 @@ explore out from a randomly-generated solution, to optimize."
     (change-status! search :running)
     (while (continue-search? search)
       (let [before-best @(:best search),
-            _ (search-step search),
+            _ (mrp/search-step strategy search),
             after-best @(:best search),
             improvement-during-step? (not (identical? before-best after-best)),
             ^StepInfo step-info @a-step-info,
@@ -218,7 +212,7 @@ explore out from a randomly-generated solution, to optimize."
 (defn dispose "Sets status to dispose so it can't be restarted" [search]
   (locking (:v-status search)
     (when-not (status-one-of? search #{:disposed})
-      (assert-idle search "Cannot dispose search.")
+      (assert-status search #{:idle} "Cannot dispose search.")
       (change-status! search :disposed))))
 
 ;; Updating solution
@@ -359,7 +353,7 @@ explore out from a randomly-generated solution, to optimize."
   (reset! a-min-delta -1))
 
 (defn search-stopped [^Search search]
-  (swap! (.-state search) assoc :stop-time (System/currentTimeMillis)))
+  (swap! (.a-timestamps search) assoc :stop-time (System/currentTimeMillis)))
 
 (defnc init "Generates current solution if needed"
   [search]  
@@ -394,7 +388,7 @@ explore out from a randomly-generated solution, to optimize."
   :do (when cache (cache/cache-move-validation cache move validation))
   validation)
 
-(defn ^boolean improvement-move? [^Search search move]
+(defn improvement-move? [^Search search move]
   (let [^SEV current @(.-a-current search)
         current-validation (.-validation current)]
     (and (not (nil? move))
@@ -403,8 +397,6 @@ explore out from a randomly-generated solution, to optimize."
              (< 0.0 (compute-delta (evaluate-move search move)
                                    (.-evaluation current)))))))
 
-
-;; For speed, we have a record to return values from loop
 (defnc get-best-move
   ([search moves require-improvement? filters]
    (get-best-move moves require-improvement? false filters))
@@ -419,8 +411,8 @@ explore out from a randomly-generated solution, to optimize."
        :let [move (first moves)]       
        (or (nil? moves) (and accept-first-improvement? (improvement-move? move)))
        (do (when (and cache chosen-move)
-             (cache/cache-move-evaluation chosen-move chosen-evaluation)
-             (cache/cache-move-validation chosen-move chosen-validation))
+             (cache/cache-move-evaluation chosen-move chosen-move-evaluation)
+             (cache/cache-move-validation chosen-move chosen-move-validation))
            chosen-move),       
        ;; If move doesn't pass all the filters, recur
        (not (every? (fn [pred] (pred move)) filters))
@@ -432,7 +424,7 @@ explore out from a randomly-generated solution, to optimize."
        (recur (next moves) chosen-move chosen-move-delta
               chosen-move-evaluation chosen-move-validation),
        ;; Choose move if it is better, and is improvement or we don't care
-       :let [evaluation (evaluation-move search move),
+       :let [evaluation (evaluate-move search move),
              delta (compute-delta evaluation current-evaluation)]
        (and (> delta chosen-move-delta)
             (or (not require-improvement?) (improvement-move? move)))
@@ -453,24 +445,7 @@ explore out from a randomly-generated solution, to optimize."
 (defn reject-move [^Search search move]
   (swap! (.-a-num-rejected-moves search) inc))
 
-
-
-protected boolean accept(Move<? super SolutionType> move){
-        // validate move (often retrieved from cache)
-        Validation newValidation = validate(move);
-        if(newValidation.passed()){
-            // evaluate move (often retrieved from cache)
-            Evaluation newEvaluation = evaluate(move);
-            // apply move to current solution (IMPORTANT: after evaluation/validation of the move!)
-            move.apply(getCurrentSolution());
-            // update current solution and best solution
-            updateCurrentAndBestSolution(getCurrentSolution(), newEvaluation, newValidation);
-            // increase accepted move counter
-            incNumAcceptedMoves(1);
-            // update successful
-            return true;
-        } else {
-            // update cancelled: invalid neighbour
-            return false;
-        }
-}
+(defn test ^double [] 0.0)
+(defn call-test []
+  (let [x (test)]
+    x))

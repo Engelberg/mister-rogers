@@ -27,13 +27,6 @@
 
 (defrecord StopCriterionChecker [stop-criteria, ^long period,
                                  ^TimeUnit period-time-unit, running])
-  ;; mrp/StopCriterionChecker
-  ;; (stop-criterion-satisfied? [this search]
-  ;;   (stop-criterion-satisfied? [this search]))
-  ;; (start-checking [this search]
-  ;;   (start-checking this search))
-  ;; (stop-checking [this search]
-  ;;   (stop-checking this search)))
 
 (defrecord Running [^Runnable running-task ^ScheduledFuture running-task-future])
 
@@ -51,26 +44,26 @@
 (declare stop) ;; TBD Deal with this circular reference
 (declare stop-checking)
 (defn stop-criterion-check-task
-  [{:keys [stop-criteria] :as stop-criterion-checker} search]
+  [{:keys [stop-criteria] :as stop-criterion-checker} search stop]
   (fn []
     (cond
       (stop-criterion-satisfied? stop-criteria search)
       (do (stop-checking stop-criterion-checker search)
           (debugf "Requesting search (%s:%d) to stop" (:name search) (:id search))
-          (mrp/stop search)), 
+          (stop search)), 
       :else
       (debug "Aborting cancelled stop criterion check task"))))
 
 (defn start-checking [{:keys [stop-criteria period period-time-unit running]
                        :as stop-criterion-checker}
-                      search]
+                      search stop]
   (swap! running
          (fn [{:keys [running-task running-task-future]}]
            (cond
              running-task (warnf "Attempted to activate already active stop criterion checker for search %s" search)
              (empty? stop-criteria) nil
              :let [running-task
-                   (stop-criterion-check-task stop-criterion-checker search),
+                   (stop-criterion-check-task stop-criterion-checker search stop),
                    running-task-future
                    (.scheduleWithFixedDelay scheduler running-task period period
                                             period-time-unit)]
