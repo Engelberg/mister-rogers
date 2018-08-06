@@ -348,8 +348,12 @@ explore out from a randomly-generated solution, to optimize."
 
 ;; Search callbacks
 
-(defn search-started [{:keys [a-timestamps a-min-delta a-step-info] :as search}]
+(defn search-started [{:keys [a-timestamps a-min-delta a-step-info
+                              a-num-accepted-moves a-num-rejected-moves]
+                       :as search}]
   (init search)
+  (when a-num-accepted-moves (reset! a-num-accepted-moves 0))
+  (when a-num-rejected-moves (reset! a-num-rejected-moves 0))
   (reset! a-timestamps (Timestamps. (System/currentTimeMillis) -1 -1))
   (reset! a-step-info (StepInfo. 0 -1))
   (reset! a-min-delta -1))
@@ -358,10 +362,35 @@ explore out from a randomly-generated solution, to optimize."
   (swap! (.-state search) assoc :stop-time (System/currentTimeMillis)))
 
 (defnc init "Generates current solution if needed"
-  [search]
+  [search]  
   :when-let [a-current (:a-current search)]
   :let [problem (:problem search)
         current-solution (:current-solution @a-current)]
   current-solution nil ;; Solution already is present
   :let [random-solution (prob/create-random-solution problem)]
   (update-current-and-best-solution random-solution))
+
+;; Neighborhood operations
+
+(defnc evaluate-move [^Search search move]
+  :let [cache (.-cache search),
+        problem (.-problem search),
+        evaluation (when cache (cache/get-cached-move-evaluation cache move))]
+  evaluation evaluation
+  :let [^SEV current @(.-a-current search),
+        evaluation (prob/evaluate-delta
+                    problem move (.-solution current) (.-evaluation current))]
+  :do (when cache (cache/cache-move-evaluation cache move evaluation))
+  evaluation)
+        
+(defnc validate-move [^Search search move]
+  :let [cache (.-cache search),
+        problem (.-problem search),
+        validation (when cache (cache/get-cached-move-validation cache move))]
+  validation validation
+  :let [^SEV current @(.-a-current search),
+        validation (prob/validate-delta
+                    problem move (.-solution current) (.-validation current))]
+  :do (when cache (cache/cache-move-validation cache move validation))
+  validation)
+  

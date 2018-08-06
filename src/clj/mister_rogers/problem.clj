@@ -25,8 +25,11 @@
         (+ (mrp/value evaluation) p)
         (- (mrp/value evaluation) p)))))
 
-(defnc evaluate [{:keys [objective data penalizing-constraints]} solution]
-  :let [evaluation (mrp/evaluate objective solution data)]
+(defnc evaluate [^Problem problem solution]
+  :let [objective (.-objective problem),
+        data (.-data problem),
+        penalizing-constraints (.-penalizing-constraints problem),
+        evaluation (mrp/evaluate objective solution data)]
   (empty? penalizing-constraints) evaluation
   :else (->PenalizedEvaluation
          evaluation
@@ -35,8 +38,10 @@
                penalizing-constraints)
          (mrp/minimizing? objective)))
 
-(defnc evaluate-delta [{:keys [objective data penalizing-constraints]}
-                       move cur-solution cur-evaluation]
+(defnc evaluate-delta [^Problem problem move cur-solution cur-evaluation]
+  :let [objective (.-objective problem),
+        data (.-data problem),
+        penalizing-constraints (.-penalizing-constraints problem)]
   (empty? penalizing-constraints)
   (mrp/evaluate-delta objective move cur-solution cur-evaluation data),
   ;; extract components and perform deltas
@@ -50,8 +55,8 @@
            penalizing-validations)
    minimizing?))
 
-(defn minimizing? [{:keys [objective]}]
-  (mrp/minimizing? objective))
+(defn minimizing? [^Problem problem]
+  (mrp/minimizing? (.-objective problem)))
 
 (defrecord UnanimousValidation [validations]
   mrp/Validation
@@ -62,17 +67,20 @@
    (when (seq s)
      (cons (first s) (unchunk (rest s))))))
 
-(defnc validate [{mc :mandatory-constraints, data :data} solution]
-  :let [num-mc (count mc)]
+(defnc validate [^Problem problem solution]  
+  :let [mc (.-mandatory-constraints problem)
+        data (.-data problem)
+        num-mc (count mc)]
   (= num-mc 0) true
   (= num-mc 1) (mrp/validate (nth mc 0) solution data)
   :else (->UnanimousValidation
          (for [constraint (unchunk mc)]  ;; unchunk for short-circuiting behavior
            (mrp/validate constraint solution data))))
 
-(defnc validate-delta [{mc :mandatory-constraints, data :data}
-                       move cur-solution cur-validation]
-  :let [num-mc (count mc)]
+(defnc validate-delta [^Problem problem move cur-solution cur-validation]
+  :let [mc (.-mandatory-constraints problem)
+        data (.-data problem)
+        num-mc (count mc)]
   (= num-mc 0) true
   (= num-mc 1) (mrp/validate-delta
                 (nth mc 0) move cur-solution cur-validation data)
