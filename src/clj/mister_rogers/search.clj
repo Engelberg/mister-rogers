@@ -393,4 +393,54 @@ explore out from a randomly-generated solution, to optimize."
                     problem move (.-solution current) (.-validation current))]
   :do (when cache (cache/cache-move-validation cache move validation))
   validation)
-  
+
+(defn ^boolean improvement-move? [^Search search move]
+  (let [^SEV current @(.-a-current search)
+        current-validation (.-validation current)]
+    (and (not (nil? move))
+         (mrp/passed? (validate-move search move))
+         (or (not (mrp/passed? current-validation))
+             (< 0.0 (compute-delta (evaluate-move search move)
+                                   (.-evaluation current)))))))
+
+
+;; For speed, we have a record to return values from loop
+(defnc get-best-move
+  ([search moves require-improvement? filters]
+   (get-best-move moves require-improvement? false filters))
+  ([^Search search moves require-improvement? accept-first-improvement? filters]
+   :let [cache (.-cache search)
+         ^SEV current (.-current search),
+         current-evaluation (.-evaluation current)]
+   (loop [moves (seq moves), chosen-move nil,
+          chosen-move-delta (- Double/MAX_VALUE)
+          chosen-move-evaluation nil, chosen-move-validation nil]
+     (cond
+       :let [move (first moves)]       
+       (or (nil? moves) (and accept-first-improvement? (improvement-move? move)))
+       (do (when (and cache chosen-move)
+             (cache/cache-move-evaluation chosen-move chosen-evaluation)
+             (cache/cache-move-validation chosen-move chosen-validation))
+           chosen-move),       
+       ;; If move doesn't pass all the filters, recur
+       (not (every? (fn [pred] (pred move)) filters))
+       (recur (next moves) chosen-move chosen-move-delta
+              chosen-move-evaluation chosen-move-validation),
+       ;; If move doesn't lead to a valid solution, recur
+       :let [validation (validate-move search move)]
+       (not (mrp/passed? validation))
+       (recur (next moves) chosen-move chosen-move-delta
+              chosen-move-evaluation chosen-move-validation),
+       ;; Choose move if it is better, and is improvement or we don't care
+       :let [evaluation (evaluation-move search move),
+             delta (compute-delta evaluation current-evaluation)]
+       (and (> delta chosen-move-delta)
+            (or (not require-improvement?) (improvement-move? move)))
+       (recur (next moves) move delta evaluation validation)
+       :else (recur (next moves) chosen-move chosen-move-delta
+                    chosen-move-evaluation chosen-move-validation)))))
+       
+       
+       
+     
+
