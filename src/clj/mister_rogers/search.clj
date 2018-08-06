@@ -114,7 +114,7 @@ explore out from a randomly-generated solution, to optimize."
   :do (doseq [k (keys listener-map)]
         (when-not (valid-search-listener-key? k)
           (warnf "%s is invalid key for listener-map in search-listener" k)))
-  (->SearchListener listener-map))
+  (map->SearchListener listener-map))
 
 (defn fire-search-started [{:keys [search-listeners] :as search}]
   (doseq [{:keys [search-started]} search-listeners]
@@ -127,7 +127,7 @@ explore out from a randomly-generated solution, to optimize."
 (defnc fire-new-best-solution
   [^Search search best-solution best-evaluation best-validation]
   :let [search-listeners (.-search-listeners search)]
-  (doseq [search-listener search-listeners]
+  (doseq [^SearchListener search-listener search-listeners]
     (when-let [new-best-solution (.-new-best-solution search-listener)]
       (new-best-solution
        search best-solution best-evaluation best-validation))))
@@ -135,14 +135,14 @@ explore out from a randomly-generated solution, to optimize."
 (defnc fire-new-current-solution
   [^Search search current-solution current-evaluation current-validation]
   :let [search-listeners (.-search-listeners search)]
-  (doseq [search-listener search-listeners]
+  (doseq [^SearchListener search-listener search-listeners]
     (when-let [new-current-solution (.-new-current-solution search-listener)]
       (new-current-solution
        search current-solution current-evaluation current-validation))))
 
 (defnc fire-step-completed [^Search search ^long current-steps]
   :let [search-listeners (.-search-listeners search)]
-  (doseq [search-listener search-listeners]
+  (doseq [^SearchListener search-listener search-listeners]
     (when-let [step-completed (.-step-completed search-listener)]
       (step-completed current-steps))))
 
@@ -184,7 +184,7 @@ explore out from a randomly-generated solution, to optimize."
   (fire-search-started search)
   (search-started search)  
   (when (continue-search? search)
-    (crit/start-checking stop-criterion-checker search)
+    (crit/start-checking stop-criterion-checker search stop)
     (change-status! search :running)
     (while (continue-search? search)
       (let [improvement-during-step? (mrp/search-step strategy search),
@@ -197,7 +197,7 @@ explore out from a randomly-generated solution, to optimize."
             steps-since-last-improvement
             (if improvement-during-step? 0
                 (inc (.-steps-since-last-improvement step-info)))]
-        (reset! step-info (StepInfo. current-steps steps-since-last-improvement))
+        (reset! a-step-info (StepInfo. current-steps steps-since-last-improvement))
         (fire-step-completed search current-steps))
       (when (crit/stop-criterion-satisfied? stop-criterion-checker search)
         (stop search)))
@@ -205,8 +205,9 @@ explore out from a randomly-generated solution, to optimize."
   (search-stopped search)
   (fire-search-stopped search)
   (infof "Search %s stopped (runtime: %d ms, steps: %d" search
-         (get-runtime search) (get-steps search))
-  (change-status! search :idle))
+         (get-runtime search) (get-steps search))  
+  (change-status! search :idle)
+  @(:a-best search))
 
 (defn stop "Sets status to terminating to interrupt search" [search]
   (locking (:v-status search)
@@ -220,6 +221,12 @@ explore out from a randomly-generated solution, to optimize."
       (assert-status search #{:idle} "Cannot dispose search.")
       (change-status! search :disposed)))
   false)
+
+;; Getting solution
+
+(defnc get-best-solution [^Search search]
+  :let [^SEV current @(.-a-best search)]
+  (.-solution current))
 
 ;; Updating solution
 
@@ -250,8 +257,8 @@ explore out from a randomly-generated solution, to optimize."
      (swap! a-best
             (fn [^SEV best]
               (cond
-                :let [best-solution (.-solution best),
-                      best-evaluation (.-evaluation best),
+                :let [best-solution (.-solution best)
+                      best-evaluation (.-evaluation best)
                       delta (compute-delta search new-evaluation best-evaluation)]
                 (not (or (nil? best-solution) (> delta 0.0))) best ;; no improve
                 :do (update-min-delta (.-a-min-delta search) delta)
@@ -269,7 +276,7 @@ explore out from a randomly-generated solution, to optimize."
      (update-current-solution search new-solution new-evaluation new-validation)))
   
   ([^Search search new-solution new-evaluation new-validation]
-   (when-let [cache (.-cache search)] (cache/clear))
+   (when-let [cache (.-cache search)] (cache/clear cache))
    (reset! (.-a-current search) (SEV. new-solution new-evaluation new-validation))
    (fire-new-current-solution search new-solution new-evaluation new-validation)))
 
@@ -346,6 +353,7 @@ explore out from a randomly-generated solution, to optimize."
   
 (defn compute-delta ^double [^Search search current-evaluation previous-evaluation]
   (cond
+    (or (nil? current-evaluation) (nil? previous-evaluation)) -1.0
     :let [problem (.-problem search)]
     (prob/minimizing? problem)
     (pm/- (mrp/value previous-evaluation) (mrp/value current-evaluation)),
@@ -367,13 +375,13 @@ explore out from a randomly-generated solution, to optimize."
   (swap! (.a-timestamps search) assoc :stop-time (System/currentTimeMillis)))
 
 (defnc init "Generates current solution if needed"
-  [search]  
-  :when-let [a-current (:a-current search)]
-  :let [problem (:problem search)
-        current-solution (:current-solution @a-current)]
+  [^Search search]  
+  :when-let [a-current (.-a-current search)]
+  :let [problem (.-problem search)
+        current-solution (.-solution ^SEV @a-current)]
   current-solution nil ;; Solution already is present
   :let [random-solution (prob/create-random-solution problem)]
-  (update-current-and-best-solution random-solution))
+  (update-current-and-best-solution search random-solution))
 
 ;; Neighborhood operations
 

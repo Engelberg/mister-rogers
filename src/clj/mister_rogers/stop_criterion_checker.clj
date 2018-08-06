@@ -37,22 +37,19 @@
                           (atom (map->Running {})))))
 
 (defn stop-criterion-satisfied?
-  [stop-criteria search]
+  [^StopCriterionChecker stop-criterion-checker search]
   (some (fn [stop-criterion] (mrp/search-should-stop? stop-criterion search))
-        stop-criteria))
+        (.-stop-criteria stop-criterion-checker)))
 
 (declare stop) ;; TBD Deal with this circular reference
 (declare stop-checking)
 (defn stop-criterion-check-task
   [{:keys [stop-criteria] :as stop-criterion-checker} search stop]
   (fn []
-    (cond
-      (stop-criterion-satisfied? stop-criteria search)
-      (do (stop-checking stop-criterion-checker search)
-          (debugf "Requesting search (%s:%d) to stop" (:name search) (:id search))
-          (stop search)), 
-      :else
-      (debug "Aborting cancelled stop criterion check task"))))
+    (when (stop-criterion-satisfied? stop-criteria search)
+      (stop-checking stop-criterion-checker search)
+      (debugf "Requesting search (%s:%d) to stop" (:name search) (:id search))
+      (stop search))))
 
 (defn start-checking [{:keys [stop-criteria period period-time-unit running]
                        :as stop-criterion-checker}
