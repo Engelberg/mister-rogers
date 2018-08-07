@@ -4,22 +4,23 @@
             [clojure.data.generators :as gen]
             [better-cond.core :refer [cond defnc]]
             [medley.core :refer [map-entry map-kv]])
-  (:import java.util.concurrent.ThreadLocalRandom))
+  (:import java.util.concurrent.ThreadLocalRandom
+           org.jamesframework.core.problems.objectives.evaluations.Evaluation))
 
 (defrecord Problem [data objective solution-generator mandatory-constraints penalizing-constraints])
 
 (defn ->Problem
   ([data objective solution-generator]
-   (Problem. data objective solution-generator [] []))
+   (Problem. data objective solution-generator nil nil))
   ([data objective solution-generator mandatory-constraints]
-   (Problem. data objective solution-generator mandatory-constraints []))
+   (Problem. data objective solution-generator mandatory-constraints nil))
   ([data objective solution-generator mandatory-constraints penalizing-constraints]
    (Problem. data objective solution-generator mandatory-constraints penalizing-constraints)))
 
 (defrecord PenalizedEvaluation [evaluation penalizing-validations minimizing?]
   ;; penalizing-validations is a map from constraints to validations
-  mrp/Evaluation
-  (value [this]
+  Evaluation
+  (getValue [this]
     (let [p (transduce (map mrp/penalty) + (vals penalizing-validations))]
       (if minimizing?
         (+ (mrp/value evaluation) p)
@@ -30,7 +31,7 @@
         data (.-data problem),
         penalizing-constraints (.-penalizing-constraints problem),
         evaluation (mrp/evaluate objective solution data)]
-  (empty? penalizing-constraints) evaluation
+  (nil? penalizing-constraints) evaluation
   :else (->PenalizedEvaluation
          evaluation
          (into {} (map (fn [constraint]

@@ -14,7 +14,7 @@
             [mister-rogers.cache :as cache]
             [primitive-math :as pm]))
 
-(declare get-runtime get-steps compute-delta
+(declare get-runtime get-steps compute-delta reorganize-listeners
          init start stop search-started search-stopped)
 
 (def next-id (atom 0))
@@ -63,7 +63,9 @@ Usually used to aggregate information from other searches."
                      :v-status (volatile! :idle)}]
   (nil? (:problem init-map))
   (throw (ex-info ":problem is required key for init-map in search" init-map)),
-  :let [search (map->Search (merge default-map init-map))]
+  :let [search (map->Search (merge default-map
+                                   (update init-map :search-listeners
+                                           reorganize-listeners)))]
   :do (infof "Created search %s" search)
   search)
 
@@ -100,6 +102,14 @@ explore out from a randomly-generated solution, to optimize."
 
 ;; Search listeners
 
+(defn reorganize-listeners [listeners]  
+  (SearchListener. (seq (doall (keep :search-started listeners)))
+                   (seq (doall (keep :search-stopped listeners)))
+                   (seq (doall (keep :new-best-solution listeners)))
+                   (seq (doall (keep :new-current-solution listeners)))
+                   (seq (doall (keep :step-completed listeners)))
+                   (seq (doall (keep :status-changed listeners)))))
+
 (defrecord SearchListener [search-started search-stopped new-best-solution
                            new-current-solution step-completed status-changed])
 (def ^:private valid-search-listener-key? (set (keys (map->SearchListener {}))))
@@ -117,38 +127,34 @@ explore out from a randomly-generated solution, to optimize."
   (map->SearchListener listener-map))
 
 (defn fire-search-started [{:keys [search-listeners] :as search}]
-  (doseq [{:keys [search-started]} search-listeners]
-    (when search-started (search-started search))))
+  (debug (prn-str search-listeners))
+  (when-let [search-started (:search-started search-listeners)]
+    (run! #(% search) search-started)))
 
 (defn fire-search-stopped [{:keys [search-listeners] :as search}]
-  (doseq [{:keys [search-stopped]} search-listeners]
-    (when search-stopped (search-stopped search))))
+  (when-let [search-stopped (:search-stopped search-listeners)]
+    (run! #(% search) search-stopped)))
 
 (defnc fire-new-best-solution
   [^Search search best-solution best-evaluation best-validation]
-  :let [search-listeners (.-search-listeners search)]
-  (doseq [^SearchListener search-listener search-listeners]
-    (when-let [new-best-solution (.-new-best-solution search-listener)]
-      (new-best-solution
-       search best-solution best-evaluation best-validation))))
+  :let [^SearchListener search-listeners (.-search-listeners search)]
+  (when-let [new-best-solution (.-new-best-solution search-listeners)]
+    (run! #(% search best-solution best-evaluation best-validation) new-best-solution)))
 
 (defnc fire-new-current-solution
   [^Search search current-solution current-evaluation current-validation]
-  :let [search-listeners (.-search-listeners search)]
-  (doseq [^SearchListener search-listener search-listeners]
-    (when-let [new-current-solution (.-new-current-solution search-listener)]
-      (new-current-solution
-       search current-solution current-evaluation current-validation))))
+  :let [^SearchListener search-listeners (.-search-listeners search)]
+  (when-let [new-current-solution (.-new-current-solution search-listeners)]
+    (run! #(% search current-solution current-evaluation current-validation) new-current-solution)))
 
 (defnc fire-step-completed [^Search search ^long current-steps]
-  :let [search-listeners (.-search-listeners search)]
-  (doseq [^SearchListener search-listener search-listeners]
-    (when-let [step-completed (.-step-completed search-listener)]
-      (step-completed current-steps))))
+  :let [^SearchListener search-listeners (.-search-listeners search)]
+  (when-let [step-completed (.-step-completed search-listeners)]
+    (run! #(% search current-steps) step-completed)))
 
 (defnc fire-status-changed [{:keys [search-listeners] :as search} new-status]
-  (doseq [{:keys [status-changed]} search-listeners]
-    (when status-changed (status-changed new-status))))
+  (when-let [status-changed (:status-changed search)]
+    (run! #(% search new-status) status-changed)))
 
 ;; Status helpers
 
@@ -198,9 +204,9 @@ explore out from a randomly-generated solution, to optimize."
             (if improvement-during-step? 0
                 (inc (.-steps-since-last-improvement step-info)))]
         (reset! a-step-info (StepInfo. current-steps steps-since-last-improvement))
-        (fire-step-completed search current-steps))
-      (when (crit/stop-criterion-satisfied? stop-criterion-checker search)
-        (stop search)))
+        (fire-step-completed search current-steps)))
+      ;; (when (crit/stop-criterion-satisfied? stop-criterion-checker search)
+      ;;   (stop search)))
     (crit/stop-checking stop-criterion-checker search))
   (search-stopped search)
   (fire-search-stopped search)
@@ -303,16 +309,15 @@ explore out from a randomly-generated solution, to optimize."
    If search is initializing, returns -1."
   ^long [^Search search]
   (let [v-status (.-v-status search)]
-    (locking v-status
-      (cond
-        :let [status @v-status]      
-        (= status :intializing) -1
-        :let [^Timestamps timestamps @(.-a-timestamps search)
-              start-time (.-start-time timestamps)
-              stop-time (.-stop-time timestamps)]
-        (or (= status :idle) (= status :disposed))
-        (if (= stop-time -1) -1 (pm/- stop-time start-time)),
-        :else (pm/- (System/currentTimeMillis) start-time)))))
+    (cond
+      :let [status @v-status]      
+      (= status :intializing) -1
+      :let [^Timestamps timestamps @(.-a-timestamps search)
+            start-time (.-start-time timestamps)
+            stop-time (.-stop-time timestamps)]
+      (or (= status :idle) (= status :disposed))
+      (if (= stop-time -1) -1 (pm/- stop-time start-time)),
+      :else (pm/- (System/currentTimeMillis) start-time))))
 
 (defn get-steps ^long [^Search search]
   (let [^StepInfo step-info @(.-a-step-info search)]

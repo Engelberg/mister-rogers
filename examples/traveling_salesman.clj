@@ -160,8 +160,8 @@
   (cond
     :let [i (.i move), j (.j move),
           distances (.distances data), n (.num-cities data)]
-    (or (= (mod (inc j) n) i) (= (mod (+ 2 j) n) i)
-        (= (mod (dec i) n) j) (= (mod (- i 2) n) j))
+    (or (= (rem (inc j) n) i) (= (rem (+ 2 j) n) i)
+        (= (rem (dec i) n) j) (= (rem (- i 2) n) j))
     (.getValue cur-evaluation),
     :let [^TSPSolution cur-solution (w/unwrap-solution cur-solution)
           cur-solution (.tour cur-solution),

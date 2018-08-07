@@ -1,4 +1,6 @@
-(ns mister-rogers.protocols)
+(ns mister-rogers.protocols
+  (:import org.jamesframework.core.problems.objectives.evaluations.Evaluation
+           org.jamesframework.core.problems.objectives.evaluations.SimpleEvaluation))
 
 (defprotocol Objective
   (evaluate [this solution data] "Return number or Evaluation")
@@ -8,8 +10,8 @@
   "Optionally implement this protocol if there is a more efficient way to evaluate one solution in terms of another"
   (evaluate-delta [this move cur-solution cur-evaluation data]))
 
-(defprotocol Evaluation
-  (value [evaluation] "Return number"))
+;; (defprotocol Evaluation
+;;   (value [evaluation] "Return number"))
 
 (defprotocol Constraint
   (validate [constraint solution data] "Return Validation, move arity is optional"))
@@ -64,9 +66,9 @@
   (validate-delta [this move cur-solution cur-validation data]
     (validate this (apply-move move cur-solution) data)))
 
-(extend-protocol Evaluation
-  Double (value [this] this)
-  Long (value [this] this))
+;; (extend-protocol Evaluation
+;;   Double (value [this] this)
+;;   Long (value [this] this))
 
 (extend-protocol Validation
   Boolean (passed? [this] this)
@@ -79,3 +81,5 @@
   Double (penalty [this] this)
   Long (penalty [this] this))
 
+(defn value ^double [evaluation]
+  (if (number? evaluation) evaluation (.getValue ^Evaluation evaluation)))

@@ -26,7 +26,7 @@
 (defnc get-cached-move-evaluation [^SingleEvaluatedMoveCache cache move]
   :when-let [^MoveEvaluation move-evaluation @(.-v-evaluation cache)]
   :let [evaluated-move (.-move move-evaluation)]
-  (= evaluated-move move) (.-evaluation move-evaluation))
+  (identical? evaluated-move move) (.-evaluation move-evaluation))
 
 (defn cache-move-validation [^SingleEvaluatedMoveCache cache move validation]
   (vreset! (.-v-validation cache) (MoveValidation. move validation)))
@@ -34,4 +34,4 @@
 (defnc get-cached-move-validation [^SingleEvaluatedMoveCache cache move]
   :when-let [^MoveValidation move-validation @(.-v-validation cache)]
   :let [validated-move (.-move move-validation)]
-  (= validated-move move) (.-validation move-validation))
+  (identical? validated-move move) (.-validation move-validation))

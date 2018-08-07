@@ -147,8 +147,8 @@
   (cond
     :let [i (.i move), j (.j move),
           distances (.distances data), n (.num-cities data)]
-    (or (= (mod (inc j) n) i) (= (mod (+ 2 j) n) i)
-        (= (mod (dec i) n) j) (= (mod (- i 2) n) j))
+    (or (= (pm/rem (inc j) n) i) (= (pm/rem (+ 2 j) n) i)
+        (= (pm/rem (dec i) n) j) (= (pm/rem (- i 2) n) j))
     (mrp/value cur-evaluation),
     :let [cur-solution (.tour cur-solution),
           cur-total (double (mrp/value cur-evaluation)),
@@ -192,5 +192,5 @@
                  :search-listeners [progress-listener]
                  :stop-criterion-checker
                  (check/stop-criterion-checker
-                  [(criteria/max-runtime 10 TimeUnit/SECONDS)])})]
+                  [(criteria/max-runtime time-limit TimeUnit/SECONDS)])})]
   (search/start search))

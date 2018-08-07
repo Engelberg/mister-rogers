@@ -41,12 +41,11 @@
   (some (fn [stop-criterion] (mrp/search-should-stop? stop-criterion search))
         (.-stop-criteria stop-criterion-checker)))
 
-(declare stop) ;; TBD Deal with this circular reference
 (declare stop-checking)
 (defn stop-criterion-check-task
   [{:keys [stop-criteria] :as stop-criterion-checker} search stop]
   (fn []
-    (when (stop-criterion-satisfied? stop-criteria search)
+    (when (stop-criterion-satisfied? stop-criterion-checker search)
       (stop-checking stop-criterion-checker search)
       (debugf "Requesting search (%s:%d) to stop" (:name search) (:id search))
       (stop search))))
@@ -57,7 +56,7 @@
   (swap! running
          (fn [{:keys [running-task running-task-future]}]
            (cond
-             running-task (warnf "Attempted to activate already active stop criterion checker for search %s" search)
+             running-task (do (warnf "Attempted to activate already active stop criterion checker for search %s" search) (Running. running-task running-task-future))
              (empty? stop-criteria) nil
              :let [running-task
                    (stop-criterion-check-task stop-criterion-checker search stop),
@@ -67,6 +66,8 @@
                                             period-time-unit)]
              :do (debugf "Stop criterion checker for search %s activated" search)
              (Running. running-task running-task-future)))))
+
+  
 
 (defn stop-checking [{:keys [running] :as stop-criterion-checker} search]
   (swap! running
