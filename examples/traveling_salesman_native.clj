@@ -153,10 +153,10 @@
     :let [cur-solution (.tour cur-solution),
           cur-total (double (mrp/value cur-evaluation)),
           ;; Get crucial cities
-          before-reversed (nth cur-solution (mod (dec i) n))
+          before-reversed (nth cur-solution (rem (+ n (dec i)) n))
           first-reversed (nth cur-solution i)
           last-reversed (nth cur-solution j)
-          after-reversed (nth cur-solution (mod (inc j) n))]
+          after-reversed (nth cur-solution (rem (inc j) n))]
     ;; Two distances are dropped by the reversal, and two are added
     :let [total (pm/- cur-total
                       (get-distance distances before-reversed first-reversed))
