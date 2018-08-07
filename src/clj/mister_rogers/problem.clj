@@ -43,7 +43,7 @@
   :let [objective (.-objective problem),
         data (.-data problem),
         penalizing-constraints (.-penalizing-constraints problem)]
-  (empty? penalizing-constraints)
+  (nil? penalizing-constraints)
   (mrp/evaluate-delta objective move cur-solution cur-evaluation data),
   ;; extract components and perform deltas
   :let [{:keys [evaluation penalizing-validations minimizing?]} cur-evaluation
@@ -69,22 +69,24 @@
      (cons (first s) (unchunk (rest s))))))
 
 (defnc validate [^Problem problem solution]  
-  :let [mc (.-mandatory-constraints problem)
-        data (.-data problem)
+  :let [mc (.-mandatory-constraints problem)]
+  (nil? mc) true ;; short circuit case for nil
+  :let [data (.-data problem)
         num-mc (count mc)]
-  (= num-mc 0) true
-  (= num-mc 1) (mrp/validate (nth mc 0) solution data)
+  (== num-mc 1) (mrp/validate (nth mc 0) solution data)
+  (== num-mc 0) true  
   :else (->UnanimousValidation
          (for [constraint (unchunk mc)]  ;; unchunk for short-circuiting behavior
            (mrp/validate constraint solution data))))
 
 (defnc validate-delta [^Problem problem move cur-solution cur-validation]
-  :let [mc (.-mandatory-constraints problem)
-        data (.-data problem)
+  :let [mc (.-mandatory-constraints problem)]
+  (nil? mc) true
+  :let [data (.-data problem)
         num-mc (count mc)]
-  (= num-mc 0) true
-  (= num-mc 1) (mrp/validate-delta
-                (nth mc 0) move cur-solution cur-validation data)
+  (== num-mc 1) (mrp/validate-delta
+                 (nth mc 0) move cur-solution cur-validation data)
+  (== num-mc 0) true
   :else (->UnanimousValidation
          (for [constraint (unchunk mc)]  ;; unchunk for short-circuiting behavior
            (mrp/validate-delta constraint move cur-solution cur-validation data))))

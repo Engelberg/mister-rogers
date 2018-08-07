@@ -147,8 +147,8 @@
   (cond
     :let [i (.i move), j (.j move),
           distances (.distances data), n (.num-cities data)]
-    (or (= (pm/rem (inc j) n) i) (= (pm/rem (+ 2 j) n) i)
-        (= (pm/rem (dec i) n) j) (= (pm/rem (- i 2) n) j))
+    (or (pm/== (pm/rem (inc j) n) i) (pm/== (pm/rem (+ 2 j) n) i)
+        (pm/== (pm/rem (dec i) n) j) (pm/== (pm/rem (- i 2) n) j))
     (mrp/value cur-evaluation),
     :let [cur-solution (.tour cur-solution),
           cur-total (double (mrp/value cur-evaluation)),

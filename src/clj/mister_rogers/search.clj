@@ -134,7 +134,6 @@ explore out from a randomly-generated solution, to optimize."
   (map->SearchListener listener-map))
 
 (defn fire-search-started [{:keys [search-listeners] :as search}]
-  (debug (prn-str search-listeners))
   (when-let [search-started (:search-started search-listeners)]
     (run! #(% search) search-started)))
 
