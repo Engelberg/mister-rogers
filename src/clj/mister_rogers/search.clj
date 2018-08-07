@@ -41,7 +41,7 @@
 
 (defrecord Search [name id problem strategy search-listeners stop-criterion-checker
                    a-timestamps a-best a-current a-step-info a-min-delta v-status
-                   neighborhood a-num-accepted-moves a-num-rejected-moves cache]
+                   neighborhood v-num-accepted-moves v-num-rejected-moves cache]
   Runnable
   (run [this] (start this))  
   Object
@@ -101,8 +101,8 @@ explore out from a randomly-generated solution, to optimize."
   (throw (ex-info ":neighborhood is a required key for init-map in search"
                   init-map))
   :let [default-map {:name "NeighborhoodSearch",
-                     :a-num-accepted-moves (atom 0),
-                     :a-num-rejected-moves (atom 0),
+                     :v-num-accepted-moves (volatile! 0),
+                     :v-num-rejected-moves (volatile! 0),
                      :cache (cache/single-evaluated-move-cache)}
         search (local-search (merge default-map init-map))]
   search)
@@ -371,11 +371,11 @@ explore out from a randomly-generated solution, to optimize."
 ;; Search callbacks
 
 (defn search-started [{:keys [a-timestamps a-min-delta a-step-info
-                              a-num-accepted-moves a-num-rejected-moves]
+                              v-num-accepted-moves v-num-rejected-moves]
                        :as search}]
   (init search)
-  (when a-num-accepted-moves (reset! a-num-accepted-moves 0))
-  (when a-num-rejected-moves (reset! a-num-rejected-moves 0))
+  (when v-num-accepted-moves (vreset! v-num-accepted-moves 0))
+  (when v-num-rejected-moves (vreset! v-num-rejected-moves 0))
   (reset! a-timestamps (Timestamps. (System/currentTimeMillis) -1 -1))
   (reset! a-step-info (StepInfo. 0 -1))
   (reset! a-min-delta -1))
@@ -467,9 +467,9 @@ explore out from a randomly-generated solution, to optimize."
         ^SEV current @(.-a-current search),
         new-solution (mrp/apply-move move (.-solution current))]
   :do (update-current-and-best-solution search new-solution evaluation validation)
-  :do (swap! (.-a-num-accepted-moves search) inc)
+  :do (vswap! (.-v-num-accepted-moves search) inc)
   true)
 
 (defn reject-move [^Search search move]
-  (swap! (.-a-num-rejected-moves search) inc)
+  (vswap! (.-v-num-rejected-moves search) inc)
   false)
