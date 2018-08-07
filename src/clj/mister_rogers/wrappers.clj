@@ -43,13 +43,10 @@
 (deftype WrapMove [move]
   Move
   (apply [this solution]
-    (let [^Solution solution solution
-          o (.o solution)]
-      (set! (.undo solution) o)
-      (set! (.o solution) (mrp/apply-move move o))))
+    (set! (.undo ^Solution solution) (.o ^Solution solution))
+    (set! (.o solution) (mrp/apply-move move o)))
   (undo [this solution]
-    (let [^Solution solution solution]
-      (set! (.o solution) (.undo solution)))))
+    (set! (.o ^Solution solution) (.undo ^Solution solution))))
 
 (defmacro wrap-move [move]
   `(WrapMove. ~move))
@@ -126,7 +123,7 @@
   (instance? WrapConstraint constraint) (:constraint constraint)
   (instance? WrapConstraintDelta constraint) (:constraint constraint)
   :else constraint)
-  
+
 (defrecord WrapNeighborhood [neighborhood]
   Neighbourhood
   (getRandomMove [this solution rnd]
