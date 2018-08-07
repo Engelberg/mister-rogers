@@ -17,6 +17,13 @@
 (declare get-runtime get-steps compute-delta reorganize-listeners
          init start stop search-started search-stopped)
 
+(def ^:const IDLE 0)
+(def ^:const INITIALIZING 1)
+(def ^:const RUNNING 2)
+(def ^:const TERMINATING 3)
+(def ^:const DISPOSED 4)
+(def status-name [:idle :intializing :running :terminating :disposed])
+
 (def next-id (atom 0))
 (defn get-next-id [] (swap! next-id inc))
 
@@ -41,7 +48,7 @@
   (toString [this] (label this)))
 
 ;; v-status is a volatile containing one of
-;; :idle, :initializing, :running, :terminating, :disposed
+;; IDLE, INITIALIZING, RUNNING, TERMINATING, DISPOSED
 ;; Changes to v-status are generally associated with a
 ;; triggering of listeners that can potentially have side effects, so
 ;; neither atoms nor refs will suffice.
@@ -60,7 +67,7 @@ Usually used to aggregate information from other searches."
                      :a-current nil ;; basic search doesn't track current solution
                      :a-step-info (atom (StepInfo. -1 -1))
                      :a-min-delta (atom 1.0)
-                     :v-status (volatile! :idle)}]
+                     :v-status (volatile! IDLE)}]
   (nil? (:problem init-map))
   (throw (ex-info ":problem is required key for init-map in search" init-map)),
   :let [search (map->Search (merge default-map
@@ -158,8 +165,8 @@ explore out from a randomly-generated solution, to optimize."
 
 ;; Status helpers
 
-(defn get-status [search]
-  @(:v-status search))
+(defn get-status ^long [search]
+  (long @(:v-status search)))
 
 (defn status-one-of? [search status-set]
   (contains? status-set (get-status search)))
@@ -173,25 +180,26 @@ explore out from a randomly-generated solution, to optimize."
   (locking v-status
     (let [previous-status (get-status search)]
       (vreset! v-status status)
-      (debugf "Search %s changed status %s ---> %s" search previous-status status)
+      (debugf "Search %s changed status %s ---> %s" search
+              (status-name previous-status) (status-name status))
       (fire-status-changed search status))))
 
 (defn continue-search? [search]
-  (not= (get-status search) :terminating))
+  (not (pm/== (get-status search) TERMINATING)))
 
 ;; Search control functions
 
 (defn start [{:keys [stop-criterion-checker a-step-info v-status strategy]
               :as search}]
   (locking v-status
-    (assert-status search #{:idle} "Cannot start search")
-    (change-status! search :initializing))
+    (assert-status search #{IDLE} "Cannot start search")
+    (change-status! search INITIALIZING))
   (infof "Search %s started" search)  
   (fire-search-started search)
   (search-started search)  
   (when (continue-search? search)
     (crit/start-checking stop-criterion-checker search stop)
-    (change-status! search :running)
+    (change-status! search RUNNING)
     (while (continue-search? search)
       (let [improvement-during-step? (mrp/search-step strategy search),
             ;; before-best @(:best search),
@@ -205,27 +213,27 @@ explore out from a randomly-generated solution, to optimize."
                 (inc (.-steps-since-last-improvement step-info)))]
         (reset! a-step-info (StepInfo. current-steps steps-since-last-improvement))
         (fire-step-completed search current-steps)))
-      ;; (when (crit/stop-criterion-satisfied? stop-criterion-checker search)
-      ;;   (stop search)))
+    ;; (when (crit/stop-criterion-satisfied? stop-criterion-checker search)
+    ;;   (stop search)))
     (crit/stop-checking stop-criterion-checker search))
   (search-stopped search)
   (fire-search-stopped search)
   (infof "Search %s stopped (runtime: %d ms, steps: %d" search
          (get-runtime search) (get-steps search))  
-  (change-status! search :idle)
+  (change-status! search IDLE)
   @(:a-best search))
 
 (defn stop "Sets status to terminating to interrupt search" [search]
   (locking (:v-status search)
-    (when (status-one-of? search #{:initializing :running})
-      (change-status! search :terminating)))
+    (when (status-one-of? search #{INITIALIZING RUNNING})
+      (change-status! search TERMINATING)))
   false)
 
 (defn dispose "Sets status to dispose so it can't be restarted" [search]
   (locking (:v-status search)
-    (when-not (status-one-of? search #{:disposed})
-      (assert-status search #{:idle} "Cannot dispose search.")
-      (change-status! search :disposed)))
+    (when-not (status-one-of? search #{DISPOSED})
+      (assert-status search #{IDLE} "Cannot dispose search.")
+      (change-status! search DISPOSED)))
   false)
 
 ;; Getting solution
@@ -246,7 +254,7 @@ explore out from a randomly-generated solution, to optimize."
 (defn update-min-delta [a-min-delta ^double delta]
   (swap! a-min-delta
          (fn [^double min-delta]
-           (if (or (= min-delta -1.0) (< delta min-delta))
+           (if (or (pm/== min-delta -1.0) (pm/< delta min-delta))
              delta min-delta))))
 
 (defnc update-best-solution "Updates solution if better, returns true if updated"
@@ -308,16 +316,15 @@ explore out from a randomly-generated solution, to optimize."
    If search is idle or disposed, returns millis of last run, or -1 if no run yet.
    If search is initializing, returns -1."
   ^long [^Search search]
-  (let [v-status (.-v-status search)]
-    (cond
-      :let [status @v-status]      
-      (= status :intializing) -1
-      :let [^Timestamps timestamps @(.-a-timestamps search)
-            start-time (.-start-time timestamps)
-            stop-time (.-stop-time timestamps)]
-      (or (= status :idle) (= status :disposed))
-      (if (= stop-time -1) -1 (pm/- stop-time start-time)),
-      :else (pm/- (System/currentTimeMillis) start-time))))
+  (cond
+    :let [status (get-status search)]      
+    (pm/== status INITIALIZING) -1
+    :let [^Timestamps timestamps @(.-a-timestamps search)
+          start-time (.-start-time timestamps)
+          stop-time (.-stop-time timestamps)]
+    (or (pm/== status IDLE) (pm/== status DISPOSED))
+    (if (pm/== stop-time -1) -1 (pm/- stop-time start-time)),
+    :else (pm/- (System/currentTimeMillis) start-time)))
 
 (defn get-steps ^long [^Search search]
   (let [^StepInfo step-info @(.-a-step-info search)]
@@ -330,31 +337,27 @@ explore out from a randomly-generated solution, to optimize."
    If search is idle or disposed, returns stop-time - last-improvement-time.
    If search is initializing, returns -1"  
   ^long [^Search search]
-  (let [v-status (.-v-status search)]
-    (locking v-status
-      (cond
-        :let [status @v-status]
-        (= status :intializing) -1
-        :let [^Timestamps timestamps @(.-a-timestamps search)
-              last-improvement-time (.-last-improvement-time timestamps)
-              stop-time (.-stop-time timestamps)]
-        (= last-improvement-time -1) (get-runtime search)
-        (or (= status :idle) (= status :disposed))
-        (pm/- stop-time last-improvement-time)
-        :else (pm/- (System/currentTimeMillis) last-improvement-time)))))
+  (cond
+    :let [status (get-status search)]
+    (pm/== status INITIALIZING) -1
+    :let [^Timestamps timestamps @(.-a-timestamps search)
+          last-improvement-time (.-last-improvement-time timestamps)
+          stop-time (.-stop-time timestamps)]
+    (pm/== last-improvement-time -1) (get-runtime search)
+    (or (pm/== status IDLE) (pm/== status DISPOSED))
+    (pm/- stop-time last-improvement-time)
+    :else (pm/- (System/currentTimeMillis) last-improvement-time)))
 
 (defn get-steps-without-improvement
   ^long [^Search search]
-  (let [v-status (.-v-status search)]
-    (locking v-status
-      (cond
-        :let [status @v-status]
-        (= status :initializing) -1
-        :let [^StepInfo step-info @(.-a-step-info search)
-              steps-since-last-improvement (.-steps-since-last-improvement
-                                            step-info)]
-        (= steps-since-last-improvement -1) (.-current-steps step-info)
-        :else steps-since-last-improvement))))
+  (cond
+    :let [status (get-status search)]
+    (pm/== status INITIALIZING) -1
+    :let [^StepInfo step-info @(.-a-step-info search)
+          steps-since-last-improvement (.-steps-since-last-improvement
+                                        step-info)]
+    (pm/== steps-since-last-improvement -1) (.-current-steps step-info)
+    :else steps-since-last-improvement))
   
 (defn compute-delta ^double [^Search search current-evaluation previous-evaluation]
   (cond
