@@ -7,31 +7,23 @@
             [taoensso.timbre :as timbre
              :refer [log  trace  debug  info  warn  error  fatal  report
                      logf tracef debugf infof warnf errorf fatalf reportf
-                     spy get-env]]))
-
-(defrecord MoveEvaluation [move evaluation])
-(defrecord MoveValidation [move validation])
-(defrecord SingleEvaluatedMoveCache [v-evaluation v-validation])
+                     spy get-env]])
+  (:import io.github.engelberg.mister_rogers.SingleEvaluatedMoveCache))
 
 (defn single-evaluated-move-cache []
-  (SingleEvaluatedMoveCache. (volatile! nil) (volatile! nil)))
+  (SingleEvaluatedMoveCache.))
 
 (defn clear [^SingleEvaluatedMoveCache cache]
-  (vreset! (.-v-evaluation cache) nil)
-  (vreset! (.-v-validation cache) nil))
+  (.clear cache))
 
 (defn cache-move-evaluation [^SingleEvaluatedMoveCache cache move evaluation]
-  (vreset! (.-v-evaluation cache) (MoveEvaluation. move evaluation)))
+  (.cacheMoveEvaluation cache move evaluation))
 
-(defnc get-cached-move-evaluation [^SingleEvaluatedMoveCache cache move]
-  :when-let [^MoveEvaluation move-evaluation @(.-v-evaluation cache)]
-  :let [evaluated-move (.-move move-evaluation)]
-  (identical? evaluated-move move) (.-evaluation move-evaluation))
+(defn get-cached-move-evaluation [^SingleEvaluatedMoveCache cache move]
+  (.getCachedMoveEvaluation cache move))
 
 (defn cache-move-validation [^SingleEvaluatedMoveCache cache move validation]
-  (vreset! (.-v-validation cache) (MoveValidation. move validation)))
+  (.cacheMoveValidation cache move validation))
 
 (defnc get-cached-move-validation [^SingleEvaluatedMoveCache cache move]
-  :when-let [^MoveValidation move-validation @(.-v-validation cache)]
-  :let [validated-move (.-move move-validation)]
-  (identical? validated-move move) (.-validation move-validation))
+  (.getCachedMoveValidation cache move))

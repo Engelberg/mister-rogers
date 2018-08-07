@@ -10,9 +10,7 @@
                  [com.rpl/specter "1.1.1"]
                  ;; Logging
                  [com.taoensso/timbre "4.10.0"]
-                 ;; Time
-                 [clj-time "0.14.4"]
-                 ;; Improved data structures
+                   ;; Improved data structures
                  [org.clojure/data.int-map "0.2.4"]
                  ;; For simpler API namespacing
                  [potemkin "0.4.5"]
@@ -34,8 +32,8 @@
   {:dev {:dependencies [[com.clojure-goes-fast/clj-java-decompiler "0.1.1"]]}}
   :jvm-opts ^:replace ["-server"] 
   :source-paths ["src/clj"]
-  :java-source-paths ["src/java"])
-  ;; :plugins [[lein-virgil "0.1.8"]])
+  :java-source-paths ["src/java"]
+  :plugins [[lein-virgil "0.1.8"]])
   
   
                  

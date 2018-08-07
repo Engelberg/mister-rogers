@@ -109,6 +109,9 @@ explore out from a randomly-generated solution, to optimize."
 
 ;; Search listeners
 
+(defrecord SearchListener [search-started search-stopped new-best-solution
+                           new-current-solution step-completed status-changed])
+
 (defn reorganize-listeners [listeners]  
   (SearchListener. (seq (doall (keep :search-started listeners)))
                    (seq (doall (keep :search-stopped listeners)))
@@ -117,8 +120,7 @@ explore out from a randomly-generated solution, to optimize."
                    (seq (doall (keep :step-completed listeners)))
                    (seq (doall (keep :status-changed listeners)))))
 
-(defrecord SearchListener [search-started search-stopped new-best-solution
-                           new-current-solution step-completed status-changed])
+
 (def ^:private valid-search-listener-key? (set (keys (map->SearchListener {}))))
 (defnc search-listener "Takes a map with the following optional keys, and functions as values:
   :search-started - (fn [search])
