@@ -59,7 +59,7 @@
 
 (defn evaluate ^double [solution ^TSPData data]
   (let [distances (.distances data), n (.num-cities data),        
-        decn (dec n), ^TSPSolution solution (w/unwrap-solution solution),
+        decn (dec n), ^TSPSolution solution (.-o ^Solution solution),
         solution (.tour solution)]
     (+ (get-distance distances (nth solution 0) (nth solution decn))
        (loop [i 0 total 0.0]
@@ -132,7 +132,7 @@
 ;; Now we create a neighborhood of these possible moves
 
 (defnc random-move [solution]
-  :let [^TSPSolution solution (w/unwrap-solution solution)
+  :let [^TSPSolution solution (.-o ^Solution solution)
         n (.n solution),
         i (gen/uniform 0 n)
         j (gen/uniform 0 (dec n))
@@ -140,7 +140,7 @@
   (TSP-2-Opt-Move. i j))
 
 (defnc all-moves [solution]
-  :let [^TSPSolution solution (w/unwrap-solution solution)
+  :let [^TSPSolution solution (.-o ^Solution solution)
         n (.n solution)]
   (for [i (range n), j (range n)
         :when (not= i j)]
@@ -163,14 +163,14 @@
     (or (= (rem (inc j) n) i) (= (rem (+ 2 j) n) i)
         (= (rem (dec i) n) j) (= (rem (- i 2) n) j))
     (.getValue cur-evaluation),
-    :let [^TSPSolution cur-solution (w/unwrap-solution cur-solution)
+    :let [^TSPSolution cur-solution (.-o ^Solution cur-solution)
           cur-solution (.tour cur-solution),
           cur-total (.getValue cur-evaluation),
           ;; Get crucial cities
-          before-reversed (nth cur-solution (mod (dec i) n))
+          before-reversed (nth cur-solution (rem (+ n (dec i)) n))
           first-reversed (nth cur-solution i)
           last-reversed (nth cur-solution j)
-          after-reversed (nth cur-solution (mod (inc j) n))]
+          after-reversed (nth cur-solution (rem (inc j) n))]
     ;; Two distances are dropped by the reversal, and two are added
     :let [total (pm/- cur-total
                       (get-distance distances before-reversed first-reversed))
@@ -187,7 +187,7 @@
 (defnc solution-info [^Search s]
   :let [sol (.getBestSolution s)
         p (.getProblem s)]
-  {:solution (w/unwrap-solution sol)
+  {:solution (.-o ^Solution sol)
    :objective (.evaluate p sol)})
 
 (def progress-listener

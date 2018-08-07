@@ -10,7 +10,7 @@
                      spy get-env]]
             [mister-rogers.protocols :as mrp]
             [mister-rogers.problem :as prob]
-            [mister-rogers.stop-criterion-checker :as crit]
+            [mister-rogers.stop-criterion-checker :as check]
             [mister-rogers.cache :as cache]
             [primitive-math :as pm]))
 
@@ -199,7 +199,7 @@ explore out from a randomly-generated solution, to optimize."
   (fire-search-started search)
   (search-started search)  
   (when (continue-search? search)
-    (crit/start-checking stop-criterion-checker search stop)
+    (check/start-checking stop-criterion-checker search stop)
     (change-status! search RUNNING)
     (while (continue-search? search)
       (let [improvement-during-step? (mrp/search-step strategy search),
@@ -214,9 +214,9 @@ explore out from a randomly-generated solution, to optimize."
                 (inc (.-steps-since-last-improvement step-info)))]
         (reset! a-step-info (StepInfo. current-steps steps-since-last-improvement))
         (fire-step-completed search current-steps)))
-    ;; (when (crit/stop-criterion-satisfied? stop-criterion-checker search)
+    ;; (when (check/stop-criterion-satisfied? stop-criterion-checker search)
     ;;   (stop search)))
-    (crit/stop-checking stop-criterion-checker search))
+    (check/stop-checking stop-criterion-checker search))
   (search-stopped search)
   (fire-search-stopped search)
   (infof "Search %s stopped (runtime: %d ms, steps: %d" search
