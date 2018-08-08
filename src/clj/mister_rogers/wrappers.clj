@@ -26,25 +26,32 @@
 (defn unwrap-solution [s]
   (.o ^Solution s))
 
-(defmacro wrap-evaluation [evaluation]
-  `(if (number? ~evaluation) (SimpleEvaluation/WITH_VALUE ~evaluation)
-       ~evaluation))
+;; (defmacro wrap-evaluation [evaluation]
+;;   `(if (number? ~evaluation) (SimpleEvaluation/WITH_VALUE ~evaluation)
+;;        ~evaluation))
+
+;; (defmacro wrap-evaluation [evaluation]
+;;   `(SimpleEvaluation/WITH_VALUE ~evaluation))
 
 ;; (defmacro unwrap-evaluation [evaluation]
 ;;   `(if (instance? SimpleEvaluation ~evaluation) (.getValue ~(with-meta evaluation {:tag Evaluation}))
 ;;        ~evaluation))
 
-(defn unwrap-evaluation ^double [evaluation]
-  (if (instance? SimpleEvaluation evaluation) (.getValue ^Evaluation evaluation)
-      evaluation))
+;; (defn unwrap-evaluation ^double [evaluation]
+;;   (if (instance? SimpleEvaluation evaluation) (.getValue ^Evaluation evaluation)
+;;       evaluation))
+
+;; (defn unwrap-evaluation ^double [evaluation]
+;;   (.getValue ^Evaluation evaluation))
 
 ;; (defn unwrap-evaluation ^double [evaluation] (mrp/value evaluation))
 
 (deftype WrapMove [move]
   Move
   (apply [this solution]
-    (set! (.undo ^Solution solution) (.o ^Solution solution))
-    (set! (.o solution) (mrp/apply-move move o)))
+    (let [sol (.o ^Solution solution)]
+      (set! (.undo ^Solution solution) sol)
+      (set! (.o ^Solution solution) (mrp/apply-move move sol))))
   (undo [this solution]
     (set! (.o ^Solution solution) (.undo ^Solution solution))))
 
@@ -61,6 +68,9 @@
 (deftype WrapEvaluation [evaluation]
   Evaluation
   (getValue [this] (mrp/value evaluation)))
+
+(defn wrap-evaluation [e] (WrapEvaluation. e))
+(defn unwrap-evaluation ^double [^WrapEvaluation e] (.getValue e))
 
 (deftype WrapValidation [validation]
   Validation

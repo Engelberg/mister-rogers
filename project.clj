@@ -9,6 +9,7 @@
                  [medley "1.0.0"]
                  [com.rpl/specter "1.1.1"]
                  ;; Logging
+                 [org.clojure/tools.logging "0.4.1"]
                  [com.taoensso/timbre "4.10.0"]
                    ;; Improved data structures
                  [org.clojure/data.int-map "0.2.4"]
@@ -29,7 +30,9 @@
                  [semantic-csv "0.1.0"]
                  [clojure-csv/clojure-csv "2.0.1"]]
   :profiles
-  {:dev {:dependencies [[com.clojure-goes-fast/clj-java-decompiler "0.1.1"]]}}
+  {:dev {:dependencies [[com.clojure-goes-fast/clj-java-decompiler "0.1.1"]
+                        [ch.qos.logback/logback-classic "1.2.3"]]}}
+;;                        [org.slf4j/slf4j-api "1.7.25"]]}}
   :jvm-opts ^:replace ["-server"] 
   :source-paths ["src/clj"]
   :java-source-paths ["src/java"]

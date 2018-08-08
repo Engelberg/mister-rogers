@@ -32,7 +32,7 @@
            org.jamesframework.core.search.stopcriteria.MinDelta
            org.jamesframework.core.search.listeners.SearchListener
            java.util.concurrent.TimeUnit
-           org.jamesframework.core.problems.objectives.Objective
+;;           org.jamesframework.core.problems.objectives.Objective
            org.jamesframework.core.problems.objectives.evaluations.SimpleEvaluation
            org.jamesframework.core.problems.objectives.evaluations.Evaluation
            org.jamesframework.core.search.algo.ParallelTempering
@@ -42,14 +42,14 @@
 
 ;; Creating Objective classes
 
-(deftype Obj [^boolean minimizing? evaluate]
-  Objective
+(deftype Objective [^boolean minimizing? evaluate]
+  org.jamesframework.core.problems.objectives.Objective
   (isMinimizing [this] minimizing?)
   (evaluate [this solution data]
     (w/wrap-evaluation (evaluate (.-o ^Solution solution) data))))
 
-(deftype ObjDelta [^boolean minimizing? evaluate evaluate-delta]
-  Objective
+(deftype ObjectiveDelta [^boolean minimizing? evaluate evaluate-delta]
+  org.jamesframework.core.problems.objectives.Objective
   (isMinimizing [this] minimizing?)
   (evaluate [this solution data]
     (w/wrap-evaluation (evaluate (.-o ^Solution solution) data)))
@@ -60,15 +60,27 @@
       (.-o ^Solution curSolution)
       (w/unwrap-evaluation curEvaluation) data))))
 
+(deftype WrapObjective [^boolean minimizing? objective]
+  org.jamesframework.core.problems.objectives.Objective
+  (isMinimizing [this] minimizing?)
+  (evaluate [this solution data]
+    (w/wrap-evaluation (mrp/evaluate objective (.-o ^Solution solution) data)))
+  (evaluate [this move curSolution curEvaluation data]
+    (w/wrap-evaluation
+     (mrp/evaluate-delta objective
+      (w/.move ^mister_rogers.wrappers.WrapMove move)
+      (.-o ^Solution curSolution)
+      (w/unwrap-evaluation curEvaluation) data))))
+
 ;; Creating Problem classes
 
-(defn map->problem [{:keys [evaluate evaluate-delta minimizing? data
+(defn map->problem [{:keys [evaluate evaluate-delta objective minimizing? data
                             solution-generator mandatory-constraints
                             penalizing-constraints] :as init-map}]
-  (let [objective
-        (if evaluate-delta
-          (ObjDelta. minimizing? evaluate evaluate-delta)
-          (Obj. minimizing? evaluate))
+  (let [;;objective (WrapObjective. minimizing? objective),
+        objective (if evaluate-delta
+                    (ObjectiveDelta. minimizing? evaluate evaluate-delta)
+                    (Objective. minimizing? evaluate))
         random-solution-generator
         (reify
           RandomSolutionGenerator

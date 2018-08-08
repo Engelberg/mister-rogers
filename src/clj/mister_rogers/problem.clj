@@ -60,8 +60,10 @@
   (mrp/minimizing? (.-objective problem)))
 
 (defrecord UnanimousValidation [validations]
-  mrp/Validation
-  (passed? [this] (every? mrp/passed? validations)))
+  ;; mrp/Validation
+  ;; (passed? [this] (every? mrp/passed? validations))  
+  org.jamesframework.core.problems.constraints.validations.Validation
+  (passed [this] (every? (fn [v] (.passed ^org.jamesframework.core.problems.constraints.validations.Validation v)) validations)))
 
 (defn- unchunk "Unchunk a chunked lazy sequence" [s]
   (lazy-seq
