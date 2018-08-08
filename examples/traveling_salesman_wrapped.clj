@@ -160,6 +160,18 @@
                                          (subvec solution (inc j) i)
                                          (take (- n i) reversed-section)))))
 
+;; (defnc apply-move [^TSP-2-Opt-Move move ^TSPSolution solution]
+;;   :let [n (.n solution)
+;;         solution (.tour solution)
+;;         i (.i move)
+;;         j (.j move)]
+;;   (< i j) (TSPSolution. n (into [] cat [(subvec solution 0 i)
+;;                                         (rseq (subvec solution i (inc j)))
+;;                                         (subvec solution (inc j) n)]))
+;;   :else (TSPSolution. n (into [] cat [(subvec solution (inc j) i)
+;;                                       (rseq (subvec solution 0 (inc j)))
+;;                                       (rseq (subvec solution i n))])))
+
 ;; Now we create a neighborhood of these possible moves
 
 (defnc random-move [^TSPSolution solution]
