@@ -169,6 +169,9 @@
 ;; Now we can create a problem that puts these elements together
 
 (def tsp1 (read-file "examples/data/tsp1.txt"))
+(def tsp2 (read-file "examples/data/tsp2.txt"))
+(def tsp3 (read-file "examples/data/tsp3.txt"))
+(def tsp4 (read-file "examples/data/tsp4.txt"))
 
 ;; A move is two indices, i and j, and we will reverse the subsequence
 ;; from solution[i] through solution[j] (inclusive)
