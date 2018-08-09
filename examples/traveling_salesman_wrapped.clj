@@ -1,31 +1,12 @@
 (ns traveling-salesman-wrapped
   (:refer-clojure :exclude [cond])
-  (:require [mister-rogers.protocols :as mrp]
+  (:require [better-cond.core :refer [cond defnc]]
+            [mister-rogers.protocols :as mrp]
             [mister-rogers.core :as mr]
-            [clojure.core.matrix :as m]            
-            [better-cond.core :refer [cond defnc]]
             [primitive-math :as pm]
             [mister-rogers.data.generators :as gen]
             [clojure.data.generators :as cgen]
-            [clojure.tools.reader.edn :as edn]
-            [mister-rogers.wrappers :as w]))
-
-;; 2D arrays of doubles
-
-(defmacro aget2 [a i j]
-  `(aget ^"[D" (aget ~(with-meta a {:tag "[[D"}) ~i) ~j))
-
-(defmacro aset2 [a i j v]
-  `(aset ^"[D" (aget ~(with-meta a {:tag "[[D"}) ~i) ~j (double ~v)))
-
-;; (defnc array-2d "Convert 2d vec of Doubles to 2d array of doubles" [v]
-;;   :let [n (count v)
-;;         a (make-array Double/TYPE n n)]
-;;   :do (doseq [i (range n), j (range n)]
-;;         (aset2 a i j (double (get-in v [i j]))))
-;;   a)
-
-
+            [clojure.tools.reader.edn :as edn]))
 
 ;; traveling salesman data is given as triangular half of a matrix
 (defn triangle-indices [n]
@@ -34,22 +15,13 @@
 (deftype TSPData [^long num-cities distances])
 
 (defnc build-matrix [n distance-map]
-  :let [m (m/zero-matrix :vectorz n n)]
+  :let [m (make-array Double/TYPE n n)]
   :do (doseq [i (range n) j (range n)]
-        (m/mset! m i j (cond
-                         (> i j) (distance-map [i j])
-                         (< i j) (distance-map [j i])
-                         :else 0)))
-  m)
-
-(defnc build-matrix [n distance-map]
-  :let [a (make-array Double/TYPE n n)]
-  :do (doseq [i (range n) j (range n)]
-        (aset2 a i j (cond
+        (aset2 m i j (cond
                        (> i j) (distance-map [i j])
                        (< i j) (distance-map [j i])
                        :else 0)))
-  a)
+  m)
 
 (defnc read-file [filename]
   :let [s (str \[ (slurp filename), \])
@@ -58,61 +30,18 @@
         distance-map (into {} (map vector (triangle-indices n) (rest data)))]
   (TSPData. n (build-matrix n distance-map)))
 
-(defn get-distance ^double [distances i j]
-  (m/mget distances i j))
+(def tsp1 (read-file "examples/data/tsp1.txt"))
+(def tsp2 (read-file "examples/data/tsp2.txt"))
+(def tsp3 (read-file "examples/data/tsp3.txt"))
+(def tsp4 (read-file "examples/data/tsp4.txt"))
 
 (defn get-distance ^double [distances i j]
-  (aget2 distances i j))
+  (mr/aget2 distances i j))
 
-(declare apply-move)
-(deftype TSP-2-Opt-Move [^long i ^long j]
-  mrp/Move
-  (apply-move [this solution] (apply-move this solution)))
+
+;; A TSP Solution is a vector that is a permutation of (range num-cities). n is count
 
 (defrecord TSPSolution [n tour])
-;; A TSP Solution is a vector that is a permutation of (range num-cities). n is count
-;; We need to define an Objective, with a way to evaluate a given solution
-
-(declare evaluate evaluate-delta)
-
-(def TSPObjective
-  (reify
-    mrp/Objective
-    (evaluate [this solution data]
-      (evaluate solution data))
-    ;; (let [distances (.distances ^TSPData data), n (.num-cities ^TSPData data)
-    ;;       decn (dec n), solution (.tour ^TSPSolution solution)]
-    ;;   (+ (get-distance distances (nth solution 0) (nth solution decn))
-    ;;      (loop [i 0 total 0.0]
-    ;;        (cond
-    ;;          (= i decn) total
-    ;;          (recur (inc i) (+ total (m/mget distances (nth solution i)
-    ;;                                          (nth solution (inc i))))))))))
-    mrp/ObjectiveDelta
-    (evaluate-delta [this move cur-solution cur-evaluation data]
-      (evaluate-delta move cur-solution cur-evaluation data))))
-    ;; (cond
-    ;;   :let [i (.i ^TSP-2-Opt-Move move), j (.j ^TSP-2-Opt-Move move),
-    ;;         distances (.distances ^TSPData data), n (.num-cities ^TSPData data)]
-    ;;   (or (= (rem (inc j) n) i) (= (rem (+ 2 j) n) i)
-    ;;       (= (rem (+ n (dec i)) n) j) (= (rem (+ n (- i 2))  n) j))
-    ;;   cur-evaluation,
-    ;;   :let [cur-solution (.tour ^TSPSolution cur-solution),
-    ;;         ;; Get crucial cities
-    ;;         before-reversed (nth cur-solution (rem (+ n (dec i)) n))
-    ;;         first-reversed (nth cur-solution i)
-    ;;         last-reversed (nth cur-solution j)
-    ;;         after-reversed (nth cur-solution (rem (inc j) n))]
-    ;;   ;; Two distances are dropped by the reversal, and two are added
-    ;;   :let [total (pm/- (double cur-evaluation)
-    ;;                     (get-distance distances before-reversed first-reversed))
-    ;;         total (pm/- total
-    ;;                     (get-distance distances last-reversed after-reversed))
-    ;;         total (pm/+ total
-    ;;                     (get-distance distances before-reversed last-reversed))
-    ;;         total (pm/+ total                    
-    ;;                     (get-distance distances first-reversed after-reversed))]
-    ;;   total))))
 
 (defn evaluate ^double [^TSPSolution solution ^TSPData data]
   (let [distances (.distances data), n (.num-cities data),        
@@ -121,17 +50,48 @@
        (loop [i 0 total 0.0]
          (cond
            (= i decn) total
-           (recur (inc i) (+ total (m/mget distances (nth solution i)
+           (recur (inc i) (+ total (mr/aget2 distances (nth solution i)
                                            (nth solution (inc i))))))))))
+
+;; Random solution generator to kick things off
+;; It is crucial to use the random functions in clojure.data.generators ns
+
+(defn generate-solution [^TSPData data]
+  (TSPSolution. (.num-cities data)
+                (vec (gen/shuffle (range (.num-cities data))))))
+
+;; A move is two indices, i and j, and we will reverse the subsequence
+;; from solution[i] through solution[j] (inclusive)
+;; If i>j, that indicates we need to wrap around to do reversal
+;; This is known as a 2-opt Move
+
+(declare apply-move)
+(deftype TSP-2-Opt-Move [^long i ^long j]
+  mrp/Move
+  (apply-move [this solution] (apply-move this solution)))
+
+(defnc apply-move [^TSP-2-Opt-Move move ^TSPSolution solution]
+  :let [n (.n solution)
+        solution (.tour solution)
+        i (.i move)
+        j (.j move)]
+  (< i j) (TSPSolution. n (into [] (concat (subvec solution 0 i)
+                                           (rseq (subvec solution i (inc j)))
+                                           (subvec solution (inc j) n))))
+  :let [reversed-section (concat (rseq (subvec solution 0 (inc j)))
+                                 (rseq (subvec solution i n)))]
+  :else (TSPSolution. n (into [] (concat (drop (- n i) reversed-section)
+                                         (subvec solution (inc j) i)
+                                         (take (- n i) reversed-section)))))
 
 ;; We can do a more efficient delta evaluation
 
 (defn evaluate-delta ^double [^TSP-2-Opt-Move move ^TSPSolution cur-solution
                               ^double cur-evaluation ^TSPData data]
-  ;; Special case when whole trip is reversed
   (cond
     :let [i (.i move), j (.j move),
-          distances (.distances data), n (.num-cities data)]
+          distances (.distances data), n (count (.tour cur-solution))]
+    ;; Special case when whole trip is reversed
     (or (= (rem (inc j) n) i) (= (rem (+ 2 j) n) i))
     ;;    (= (rem (+ n (dec i)) n) j) (= (rem (+ n (- i 2))  n) j))
     (double cur-evaluation),
@@ -151,58 +111,6 @@
           total (pm/+ total                    
                       (get-distance distances first-reversed after-reversed))]
     total))
-
-;; Random solution generator to kick things off
-;; It is crucial to use the random functions in clojure.data.generators ns
-
-(defn generate-solution [^TSPData data]
-  (TSPSolution. (.num-cities data)
-                (vec (gen/shuffle (range (.num-cities data))))))
-
-(def solution-generator
-  (reify
-    mrp/RandomSolutionGenerator
-    (create [this data]
-      (TSPSolution. (.num-cities ^TSPData data)
-                    (vec (gen/shuffle (range (.num-cities ^TSPData data))))))))
-
-;; Now we can create a problem that puts these elements together
-
-(def tsp1 (read-file "examples/data/tsp1.txt"))
-(def tsp2 (read-file "examples/data/tsp2.txt"))
-(def tsp3 (read-file "examples/data/tsp3.txt"))
-(def tsp4 (read-file "examples/data/tsp4.txt"))
-
-;; A move is two indices, i and j, and we will reverse the subsequence
-;; from solution[i] through solution[j] (inclusive)
-;; If i>j, that indicates we need to wrap around to do reversal
-;; This is known as a 2-opt Move
-
-(defnc apply-move [^TSP-2-Opt-Move move ^TSPSolution solution]
-  :let [n (.n solution)
-        solution (.tour solution)
-        i (.i move)
-        j (.j move)]
-  (< i j) (TSPSolution. n (into [] (concat (subvec solution 0 i)
-                                           (rseq (subvec solution i (inc j)))
-                                           (subvec solution (inc j) n))))
-  :let [reversed-section (concat (rseq (subvec solution 0 (inc j)))
-                                 (rseq (subvec solution i n)))]
-  :else (TSPSolution. n (into [] (concat (drop (- n i) reversed-section)
-                                         (subvec solution (inc j) i)
-                                         (take (- n i) reversed-section)))))
-
-;; (defnc apply-move [^TSP-2-Opt-Move move ^TSPSolution solution]
-;;   :let [n (.n solution)
-;;         solution (.tour solution)
-;;         i (.i move)
-;;         j (.j move)]
-;;   (< i j) (TSPSolution. n (into [] cat [(subvec solution 0 i)
-;;                                         (rseq (subvec solution i (inc j)))
-;;                                         (subvec solution (inc j) n)]))
-;;   :else (TSPSolution. n (into [] cat [(subvec solution (inc j) i)
-;;                                       (rseq (subvec solution 0 (inc j)))
-;;                                       (rseq (subvec solution i n))])))
 
 ;; Now we create a neighborhood of these possible moves
 
@@ -245,7 +153,6 @@
                 {:name "Traveling Salesman"
                  :evaluate evaluate,
                  :evaluate-delta evaluate-delta,
-                 ;; :objective TSPObjective
                  :minimizing? true,
                  :solution-generator generate-solution,
                  :neighborhood TSP-2-Opt-Neighborhood,
