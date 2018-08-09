@@ -10,6 +10,23 @@
             [net.cgrand.xforms :as x]
             [mister-rogers.wrappers :as w]))
 
+;; 2D arrays of doubles
+
+(defmacro aget2 [a i j]
+  `(aget ^"[D" (aget ~a ~i) ~j))
+
+(defmacro aset2 [a i j v]
+  `(aset ^"[D" (aget ~a ~i) ~j ~v))
+
+(defnc array-2d "Convert 2d vec of Doubles to 2d array of doubles" [v]
+  :let [n (count v)
+        ^"[[D" a (make-array Double/TYPE n n)]
+  :do (doseq [i (range n), j (range n)]
+        (aset2 a i j (double (get-in v [i j]))))
+  a)
+
+
+
 ;; traveling salesman data is given as triangular half of a matrix
 (defn triangle-indices [n]
   (for [i (range n), j (range i)] [i j]))

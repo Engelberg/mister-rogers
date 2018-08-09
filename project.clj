@@ -16,7 +16,7 @@
                  ;; For simpler API namespacing
                  [potemkin "0.4.5"]
                  ;; For Java version
-                 [org.jamesframework/james-core "1.2"]
+;;                 [org.jamesframework/james-core "1.2"]
                  [org.jamesframework/james-extensions "1.2"]
                  ;; For writing examples
                  [org.clojure/data.generators "0.1.2"]
