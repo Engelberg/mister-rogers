@@ -5,25 +5,25 @@
             [clojure.core.matrix :as m]            
             [better-cond.core :refer [cond defnc]]
             [primitive-math :as pm]
-            [clojure.data.generators :as gen :refer [*rnd*]]
+            [mister-rogers.data.generators :as gen]
+            [clojure.data.generators :as cgen]
             [clojure.tools.reader.edn :as edn]
-            [net.cgrand.xforms :as x]
             [mister-rogers.wrappers :as w]))
 
 ;; 2D arrays of doubles
 
 (defmacro aget2 [a i j]
-  `(aget ^"[D" (aget ~a ~i) ~j))
+  `(aget ^"[D" (aget ~(with-meta a {:tag "[[D"}) ~i) ~j))
 
 (defmacro aset2 [a i j v]
-  `(aset ^"[D" (aget ~a ~i) ~j ~v))
+  `(aset ^"[D" (aget ~(with-meta a {:tag "[[D"}) ~i) ~j (double ~v)))
 
-(defnc array-2d "Convert 2d vec of Doubles to 2d array of doubles" [v]
-  :let [n (count v)
-        ^"[[D" a (make-array Double/TYPE n n)]
-  :do (doseq [i (range n), j (range n)]
-        (aset2 a i j (double (get-in v [i j]))))
-  a)
+;; (defnc array-2d "Convert 2d vec of Doubles to 2d array of doubles" [v]
+;;   :let [n (count v)
+;;         a (make-array Double/TYPE n n)]
+;;   :do (doseq [i (range n), j (range n)]
+;;         (aset2 a i j (double (get-in v [i j]))))
+;;   a)
 
 
 
@@ -42,6 +42,15 @@
                          :else 0)))
   m)
 
+(defnc build-matrix [n distance-map]
+  :let [a (make-array Double/TYPE n n)]
+  :do (doseq [i (range n) j (range n)]
+        (aset2 a i j (cond
+                       (> i j) (distance-map [i j])
+                       (< i j) (distance-map [j i])
+                       :else 0)))
+  a)
+
 (defnc read-file [filename]
   :let [s (str \[ (slurp filename), \])
         data (edn/read-string s)
@@ -51,6 +60,9 @@
 
 (defn get-distance ^double [distances i j]
   (m/mget distances i j))
+
+(defn get-distance ^double [distances i j]
+  (aget2 distances i j))
 
 (declare apply-move)
 (deftype TSP-2-Opt-Move [^long i ^long j]
@@ -223,7 +235,7 @@
                                      " steps)"))))
    :new-best-solution (fn [search newBestSolution newBestSolutionEvaluation newBestSolutionValidation]
                         (println (str "New best solution: "
-                                      (pr-str (mr/get-best search)))))})
+                                      (mrp/value (:evaluation (mr/get-best search))))))})
 
 (defnc traveling-salesman [data time-limit]
   :let [search (mr/random-descent-search

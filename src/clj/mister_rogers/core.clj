@@ -13,7 +13,6 @@
             [mister-rogers.stop-criterion-checker :as check]
             [mister-rogers.criteria :as crit]
             [mister-rogers.wrappers :as w]
-            [clojure.data.generators :as gen :refer [*rnd*]]
             [primitive-math :as pm])
   (:import org.jamesframework.core.search.algo.RandomDescent
            org.jamesframework.core.search.Search
