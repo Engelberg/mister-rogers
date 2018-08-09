@@ -269,3 +269,17 @@ and optional keys
   (.stop search)
   (search-state search))
 
+;; helper macros and functions for 2d arrays
+
+(defmacro aget2 [a i j]
+  `(aget ^"[D" (aget ~(with-meta a {:tag "[[D"}) ~i) ~j))
+
+(defmacro aset2 [a i j v]
+  `(aset ^"[D" (aget ~(with-meta a {:tag "[[D"}) ~i) ~j (double ~v)))
+
+(defnc array-2d "Convert 2d vec of Doubles to 2d array of doubles" [v]
+  :let [n (count v)
+        a (make-array Double/TYPE n n)]
+  :do (doseq [i (range n), j (range n)]
+        (aset2 a i j (double (get-in v [i j]))))
+  a)
