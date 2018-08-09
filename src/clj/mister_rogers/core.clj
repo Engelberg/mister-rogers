@@ -208,15 +208,21 @@ and optional keys
                 (.getID search)
                 (.getRuntime search)
                 (.getTimeWithoutImprovement search)
-                (.-o ^Solution (.getBestSolution search))
-                (w/unwrap-evaluation (.getBestSolutionEvaluation search))
-                (w/unwrap-validation (.getBestSolutionValidation search))
+                (when-let [^Solution s (.getBestSolution search)]
+                  (.-o s))
+                (when-let [e (.getBestSolutionEvaluation search)]
+                  (w/unwrap-evaluation e))
+                (when-let [v (.getBestSolutionValidation search)]
+                  (w/unwrap-validation v))
                 (when local-search?
-                  (.-o ^Solution (.getCurrentSolution ^LocalSearch search)))
+                  (when-let [^Solution s (.getCurrentSolution search)]
+                    (.-o s)))
                 (when local-search?
-                  (w/unwrap-evaluation (.getCurrentSolutionEvaluation ^LocalSearch search)))
+                  (when-let [e (.getCurrentSolutionEvaluation search)]
+                    (w/unwrap-evaluation e)))
                 (when local-search?
-                  (w/unwrap-validation (.getCurrentSolutionValidation ^LocalSearch search)))
+                  (when-let [v (.getCurrentSolutionValidation search)]
+                    (w/unwrap-validation v)))
                 (.getSteps search)
                 (.getStepsWithoutImprovement search)
                 (.getMinDelta search)
