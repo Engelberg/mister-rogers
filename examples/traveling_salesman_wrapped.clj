@@ -39,26 +39,27 @@
   (mr/aget2 distances i j))
 
 
-;; A TSP Solution is a vector that is a permutation of (range num-cities). n is count
+;; A TSP Solution is a vector that is a permutation of (range num-cities).
+;; count is too slow for our inner loop code, because of its dynamic dispatch.
+;; So we make a vcount that is faster on vectors
 
-(defrecord TSPSolution [n tour])
+(defmacro vcount [v] `(.count ~(with-meta v {:tag "clojure.lang.PersistentVector"})))
 
-(defn evaluate ^double [^TSPSolution solution ^TSPData data]
+(defn evaluate ^double [solution ^TSPData data]
   (let [distances (.distances data), n (.num-cities data),        
-        decn (dec n), solution (.tour solution)]
+        decn (dec n)]
     (+ (get-distance distances (nth solution 0) (nth solution decn))
        (loop [i 0 total 0.0]
          (cond
            (= i decn) total
            (recur (inc i) (+ total (mr/aget2 distances (nth solution i)
-                                           (nth solution (inc i))))))))))
+                                             (nth solution (inc i))))))))))
 
 ;; Random solution generator to kick things off
 ;; It is crucial to use the random functions in clojure.data.generators ns
 
 (defn generate-solution [^TSPData data]
-  (TSPSolution. (.num-cities data)
-                (vec (gen/shuffle (range (.num-cities data))))))
+  (vec (gen/shuffle (range (.num-cities data)))))
 
 ;; A move is two indices, i and j, and we will reverse the subsequence
 ;; from solution[i] through solution[j] (inclusive)
@@ -70,32 +71,31 @@
   mrp/Move
   (apply-move [this solution] (apply-move this solution)))
 
-(defnc apply-move [^TSP-2-Opt-Move move ^TSPSolution solution]
-  :let [n (.n solution)
-        solution (.tour solution)
+(defnc apply-move [^TSP-2-Opt-Move move solution]
+  :let [n (vcount solution)
         i (.i move)
         j (.j move)]
-  (< i j) (TSPSolution. n (into [] (concat (subvec solution 0 i)
-                                           (rseq (subvec solution i (inc j)))
-                                           (subvec solution (inc j) n))))
+  (< i j) (into [] (concat (subvec solution 0 i)
+                           (rseq (subvec solution i (inc j)))
+                           (subvec solution (inc j) n)))
   :let [reversed-section (concat (rseq (subvec solution 0 (inc j)))
                                  (rseq (subvec solution i n)))]
-  :else (TSPSolution. n (into [] (concat (drop (- n i) reversed-section)
-                                         (subvec solution (inc j) i)
-                                         (take (- n i) reversed-section)))))
+  :else (into [] (concat (drop (- n i) reversed-section)
+                         (subvec solution (inc j) i)
+                         (take (- n i) reversed-section))))
 
 ;; We can do a more efficient delta evaluation
 
-(defn evaluate-delta ^double [^TSP-2-Opt-Move move ^TSPSolution cur-solution
+(defn evaluate-delta ^double [^TSP-2-Opt-Move move cur-solution
                               ^double cur-evaluation ^TSPData data]
   (cond
-    :let [i (.i move), j (.j move),
-          distances (.distances data), n (count (.tour cur-solution))]
+    :let [i (.i move), j (.j move), 
+          distances (.distances data), n (.num-cities data)]
     ;; Special case when whole trip is reversed
     (or (= (rem (inc j) n) i) (= (rem (+ 2 j) n) i))
     ;;    (= (rem (+ n (dec i)) n) j) (= (rem (+ n (- i 2))  n) j))
     (double cur-evaluation),
-    :let [cur-solution (.tour cur-solution),
+    :let [;; cur-solution (.tour cur-solution),
           ;; Get crucial cities
           before-reversed (nth cur-solution (rem (+ n (dec i)) n))
           first-reversed (nth cur-solution i)
@@ -114,20 +114,19 @@
 
 ;; Now we create a neighborhood of these possible moves
 
-(defnc random-move [^TSPSolution solution]
-  :let [n (.n solution),
+(defnc random-move [solution]
+  :let [n (vcount solution),
         i (gen/uniform 0 n)
         j (gen/uniform 0 (dec n))
         j (if (>= j i) (inc j) j)]
   (TSP-2-Opt-Move. i j))
 
-(defnc all-moves [^TSPSolution solution]
-  :let [n (.n solution)]
+(defnc all-moves [solution]
+  :let [n (vcount solution)]
   (for [i (range n), j (range n)
         :when (not= i j)]
     (TSP-2-Opt-Move. i j)))
 
-;; (def TSP-2-Opt-Neighborhood {:random-move random-move :all-moves all-moves})
 (def TSP-2-Opt-Neighborhood
   (reify mrp/Neighborhood
     (random-move [this solution] (random-move solution))
