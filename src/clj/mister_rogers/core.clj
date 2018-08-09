@@ -31,9 +31,10 @@
            org.jamesframework.core.search.stopcriteria.MinDelta
            org.jamesframework.core.search.listeners.SearchListener
            java.util.concurrent.TimeUnit
-;;           org.jamesframework.core.problems.objectives.Objective
            org.jamesframework.core.problems.objectives.evaluations.SimpleEvaluation
            org.jamesframework.core.problems.objectives.evaluations.Evaluation
+           org.jamesframework.core.problems.constraints.validations.Validation
+           org.jamesframework.core.problems.constraints.validations.PenalizingValidation
            org.jamesframework.core.search.algo.ParallelTempering
            org.jamesframework.core.search.neigh.Move
            io.github.engelberg.mister_rogers.Solution
@@ -59,25 +60,12 @@
       (.-o ^Solution curSolution)
       (w/unwrap-evaluation curEvaluation) data))))
 
-(deftype WrapObjective [^boolean minimizing? objective]
-  org.jamesframework.core.problems.objectives.Objective
-  (isMinimizing [this] minimizing?)
-  (evaluate [this solution data]
-    (w/wrap-evaluation (mrp/evaluate objective (.-o ^Solution solution) data)))
-  (evaluate [this move curSolution curEvaluation data]
-    (w/wrap-evaluation
-     (mrp/evaluate-delta objective
-      (w/.move ^mister_rogers.wrappers.WrapMove move)
-      (.-o ^Solution curSolution)
-      (w/unwrap-evaluation curEvaluation) data))))
-
 ;; Creating Problem classes
 
 (defn map->problem [{:keys [evaluate evaluate-delta objective minimizing? data
                             solution-generator mandatory-constraints
                             penalizing-constraints] :as init-map}]
-  (let [;;objective (WrapObjective. minimizing? objective),
-        objective (if evaluate-delta
+  (let [objective (if evaluate-delta
                     (ObjectiveDelta. minimizing? evaluate evaluate-delta)
                     (Objective. minimizing? evaluate))
         random-solution-generator
@@ -283,3 +271,20 @@ and optional keys
   :do (doseq [i (range n), j (range n)]
         (aset2 a i j (double (get-in v [i j]))))
   a)
+
+;; Extractors that take cases on whether you have primitve or interface
+
+(defn value ^double [evaluation]
+  (if (number? evaluation) evaluation (.getValue ^Evaluation evaluation)))
+
+(defn passed? [validation]
+  (cond
+    (boolean? validation) validation
+    (nil? validation) false
+    (number? validation) (zero? validation)
+    :else (.passed ^Validation validation)))
+
+(defn penalty ^double [validation]
+  (cond
+    (number? validation) (zero? validation)
+    :else (.penalty ^PenalizingValidation validation)))
