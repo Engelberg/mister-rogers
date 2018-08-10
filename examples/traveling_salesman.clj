@@ -100,15 +100,23 @@
 ;; only at the changes as we move from one candidate solution to another.
 ;; So this doesn't have to be super-fast, and we can feel free to use
 ;; higher-order functions like partition and transduce if so desired.
+;; However, for educational purposes, I've written this as if it were
+;; a performance-sensitive function, to demonstrate how to use loop-recur
+;; to keep our numbers as primitives and to avoid slower seq processing.
 
 (defn evaluate 
   "solution tells us what order we are visiting the cities, and
   data tells us the distances. We return the total trip distance
   (returning to our start city at the end of our tour)"
   ^double [solution ^TSPData data]
-  (let [distances (.distances data)]
-    (transduce (map (fn [[i j]] (get-distance distances i j)))
-               + (partition 2 1 (conj solution (solution 0))))))
+  (let [distances (.distances data), n (.num-cities data),        
+        decn (dec n)]    
+    (+ (get-distance distances (nth solution 0) (nth solution decn))
+       (loop [i 0 total 0.0]
+         (cond
+           (= i decn) total
+           (recur (inc i) (+ total (get-distance distances (nth solution i)
+                                                 (nth solution (inc i))))))))))
 
 ;; Random solution generator to kick things off
 ;; It is recommended to use the random functions in
