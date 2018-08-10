@@ -94,35 +94,21 @@
 ;; So, for example, [1 4 2 3 0] tells us to visit 1, 4, 2, 3, 0,
 ;; and then back to 1 to finish out our tour of all the cities.
 
-;; count is too slow for our inner loop code, because of its dynamic dispatch.
-;; So we make a vcount that is faster on vectors. This small optimization
-;; makes the code run twice as fast!
-
-(defmacro vcount [v] `(.count ~(with-meta v {:tag "clojure.lang.PersistentVector"})))
-
 ;; evaluate is only going to be executed once at the beginning of the search,
 ;; to evaluate the intial, randomly-generated solution. After that we will
 ;; be using evaluate-delta which can do a faster computation by looking
 ;; only at the changes as we move from one candidate solution to another.
 ;; So this doesn't have to be super-fast, and we can feel free to use
 ;; higher-order functions like partition and transduce if so desired.
-;; However, for educational purposes, I've written this as if it were
-;; a performance-sensitive function, to demonstrate how to use loop-recur
-;; to keep our numbers as primitives and to avoid slower seq processing.
 
 (defn evaluate 
   "solution tells us what order we are visiting the cities, and
   data tells us the distances. We return the total trip distance
   (returning to our start city at the end of our tour)"
   ^double [solution ^TSPData data]
-  (let [distances (.distances data), n (.num-cities data),        
-        decn (dec n)]
-    (+ (get-distance distances (nth solution 0) (nth solution decn))
-       (loop [i 0 total 0.0]
-         (cond
-           (= i decn) total
-           (recur (inc i) (+ total (get-distance distances (nth solution i)
-                                                 (nth solution (inc i))))))))))
+  (let [distances (.distances data)]
+    (transduce (map (fn [[i j]] (get-distance distances i j)))
+               + (partition 2 1 (conj solution (solution 0))))))
 
 ;; Random solution generator to kick things off
 ;; It is recommended to use the random functions in
@@ -152,9 +138,12 @@
 
 ;; This is one of our performance-sensitive functions
 ;; that will be called millions of times per second.
+;; mister-rogers.core provides a count macro that
+;; is faster on Counted collections, like vectors.
+;; Using this version of count makes the code twice as fast!
 
 (defnc apply-move [^TSP-2-Opt-Move move solution]
-  :let [n (vcount solution)
+  :let [n (mr/count solution)
         i (.i move)
         j (.j move)]
   (< i j) (into [] (concat (subvec solution 0 i)
@@ -171,6 +160,8 @@
 ;; first one, instead of evaluate.  That means this is a
 ;; performance-critical function, and we can benefit from
 ;; accessing our fields directly and using primitive math.
+;; Also, mister-rogers.core provides a version of nth that is
+;; faster for Clojure's Indexed collections, like vectors.
 
 (defn evaluate-delta ^double [^TSP-2-Opt-Move move cur-solution
                               ^double cur-evaluation ^TSPData data]
@@ -178,21 +169,21 @@
     :let [i (.i move), j (.j move), 
           distances (.distances data), n (.num-cities data)]
     ;; Special case when whole trip is reversed
-    (or (= (rem (inc j) n) i) (= (rem (+ 2 j) n) i)) cur-evaluation
+    (or (== (rem (inc j) n) i) (== (rem (+ 2 j) n) i)) cur-evaluation
     :let [;; Get crucial cities
-          before-reversed (nth cur-solution (rem (+ n (dec i)) n))
-          first-reversed (nth cur-solution i)
-          last-reversed (nth cur-solution j)
-          after-reversed (nth cur-solution (rem (inc j) n))]
+          before-reversed (mr/nth cur-solution (rem (+ n (dec i)) n))
+          first-reversed (mr/nth cur-solution i)
+          last-reversed (mr/nth cur-solution j)
+          after-reversed (mr/nth cur-solution (rem (inc j) n))]
     ;; Two distances are dropped by the reversal, and two are added
     :let [total (- (double cur-evaluation)
-                      (get-distance distances before-reversed first-reversed))
+                   (get-distance distances before-reversed first-reversed))
           total (- total
-                      (get-distance distances last-reversed after-reversed))
+                   (get-distance distances last-reversed after-reversed))
           total (+ total
-                      (get-distance distances before-reversed last-reversed))
+                   (get-distance distances before-reversed last-reversed))
           total (+ total                    
-                      (get-distance distances first-reversed after-reversed))]
+                   (get-distance distances first-reversed after-reversed))]
     total))
 
 ;; Now we create a "neighborhood" of these possible moves by
@@ -201,14 +192,14 @@
 ;; not both. But we provide both implementations here for completeness.
 
 (defnc random-move [solution]
-  :let [n (vcount solution),
+  :let [n (mr/count solution),
         i (gen/uniform 0 n)
         j (gen/uniform 0 (dec n))
         j (if (>= j i) (inc j) j)]
   (TSP-2-Opt-Move. i j))
 
 (defnc all-moves [solution]
-  :let [n (vcount solution)]
+  :let [n (mr/count solution)]
   (for [i (range n), j (range n)
         :when (not= i j)]
     (TSP-2-Opt-Move. i j)))

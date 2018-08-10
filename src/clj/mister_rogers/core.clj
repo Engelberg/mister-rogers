@@ -1,5 +1,5 @@
 (ns mister-rogers.core
-  (:refer-clojure :exclude [cond])
+  (:refer-clojure :exclude [cond count nth])
   (:require [better-cond.core :refer [cond defnc defnc-]]
             [medley.core :as medley]
             [com.rpl.specter :as specter
@@ -9,8 +9,6 @@
                      logf tracef debugf infof warnf errorf fatalf reportf
                      spy get-env]]
             [mister-rogers.protocols :as mrp]
-            [mister-rogers.problem :as prob]
-            [mister-rogers.stop-criterion-checker :as check]
             [mister-rogers.criteria :as crit]
             [mister-rogers.wrappers :as w]
             [primitive-math :as pm])
@@ -215,13 +213,13 @@ and optional keys
                 (when-let [v (.getBestSolutionValidation search)]
                   (w/unwrap-validation v))
                 (when local-search?
-                  (when-let [^Solution s (.getCurrentSolution search)]
+                  (when-let [^Solution s (.getCurrentSolution ^LocalSearch search)]
                     (.-o s)))
                 (when local-search?
-                  (when-let [e (.getCurrentSolutionEvaluation search)]
+                  (when-let [e (.getCurrentSolutionEvaluation ^LocalSearch search)]
                     (w/unwrap-evaluation e)))
                 (when local-search?
-                  (when-let [v (.getCurrentSolutionValidation search)]
+                  (when-let [v (.getCurrentSolutionValidation ^LocalSearch search)]
                     (w/unwrap-validation v)))
                 (.getSteps search)
                 (.getStepsWithoutImprovement search)
@@ -263,6 +261,12 @@ and optional keys
   (.stop search)
   (search-state search))
 
+;; Helper macros for faster collection access
+
+(defmacro count [v] `(.count ~(with-meta v {:tag "clojure.lang.Counted"})))
+
+(defmacro nth [v i] `(.nth ~(with-meta v {:tag "clojure.lang.Indexed"}) ~i))
+
 ;; helper macros and functions for 2d arrays
 
 (defmacro aget2 [a i j]
@@ -293,4 +297,4 @@ and optional keys
 (defn penalty ^double [validation]
   (cond
     (number? validation) (zero? validation)
-    :else (.penalty ^PenalizingValidation validation)))
+    :else (.getPenalty ^PenalizingValidation validation)))

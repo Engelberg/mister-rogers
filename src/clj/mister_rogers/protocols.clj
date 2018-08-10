@@ -5,7 +5,9 @@
            org.jamesframework.core.problems.constraints.validations.SimpleValidation
            org.jamesframework.core.problems.constraints.validations.PenalizingValidation
            org.jamesframework.core.problems.constraints.validations.SimplePenalizingValidation))
-                        
+             
+           
+
 (defprotocol Objective
   (evaluate [this solution data] "Return number or Evaluation")
   (minimizing? [this]))
@@ -91,3 +93,17 @@
 ;;   Double (penalty [this] this)
 ;;   Long (penalty [this] this))
 
+(defn value ^double [evaluation]
+  (if (number? evaluation) evaluation (.getValue ^Evaluation evaluation)))
+
+(defn passed? [validation]
+  (cond
+    (boolean? validation) validation
+    (nil? validation) false
+    (number? validation) (zero? validation)
+    :else (.passed ^Validation validation)))
+
+(defn penalty ^double [validation]
+  (cond
+    (number? validation) (zero? validation)
+    :else (.getPenalty ^PenalizingValidation validation)))
